@@ -1,0 +1,47 @@
+quarkus:
+  application:
+    name: domain-billing
+  banner:
+    enabled: false
+
+  oidc:
+    auth-server-url: ${OIDC_AUTH_SERVER_URL:http://localhost:8090/realms/myapp}
+    discovery-enabled: false
+    jwks-path: /protocol/openid-connect/certs
+    application-type: service
+    token:
+      issuer: ${OIDC_ISSUER_URI:http://localhost:8090/realms/myapp}
+      forced-jwk-refresh-interval: PT1H
+    connection-delay: PT60S
+
+  http:
+    port: 8082
+    auth:
+      permission:
+        public:
+          paths: /q/health*,/q/info,/assets*
+          policy: permit
+        authenticated:
+          paths: /*
+          policy: authenticated
+
+  quinoa:
+    ui-dir: src/main/webui
+    build-dir: dist
+    package-manager-install: false
+    dev-server:
+      port: 3002
+
+  smallrye-health:
+    ui:
+      enable: false
+
+  info:
+    build:
+      enabled: true
+    git:
+      enabled: false
+    os:
+      enabled: false
+    java:
+      enabled: false

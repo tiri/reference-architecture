@@ -1,0 +1,47 @@
+{
+  "realm": "myapp",
+  "enabled": true,
+  "displayName": "My App",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "clients": [
+    {
+      "clientId": "myapp-client",
+      "name": "My App Client",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dev-secret",
+      "redirectUris": [
+        "http://localhost:8080/*",
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": ["http://localhost:8080", "http://localhost:3000"],
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:8080/*",
+        "frontendUrl": "http://keycloak:8080"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "testuser",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "test@example.com",
+      "firstName": "Test",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "testpass", "temporary": false }]
+    }
+  ],
+  "accessTokenLifespan": 3600,
+  "ssoSessionMaxLifespan": 36000,
+  "attributes": {
+    "frontendUrl": "http://localhost:8090"
+  }
+}

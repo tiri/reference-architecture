@@ -1,0 +1,94 @@
+quarkus:
+  application:
+    name: portal
+  banner:
+    enabled: false
+
+  oidc:
+    # OIDC_AUTH_SERVER_URL — where Quarkus calls Keycloak server-to-server.
+    #   Local dev: localhost:8090  |  Docker: keycloak:8080 (internal)
+    # OIDC_ISSUER_URI — the public issuer that Keycloak embeds in JWT iss claims
+    #   (set by frontendUrl in the realm). Used only for issuer validation (string compare,
+    #   no network call). Always localhost:8090 because that's where the browser reaches KC.
+    auth-server-url: ${OIDC_AUTH_SERVER_URL:http://localhost:8090/realms/myapp}
+    discovery-enabled: false
+    authorization-path: ${OIDC_AUTH_URI:http://localhost:8090/realms/myapp/protocol/openid-connect/auth}
+    token-path: /protocol/openid-connect/token
+    jwks-path: /protocol/openid-connect/certs
+    user-info-path: /protocol/openid-connect/userinfo
+    end-session-path: ${OIDC_END_SESSION_URI:http://localhost:8090/realms/myapp/protocol/openid-connect/logout}
+    client-id: ${OIDC_CLIENT_ID:myapp-client}
+    credentials:
+      secret: ${OIDC_CLIENT_SECRET:dev-secret}
+    application-type: web-app
+    token:
+      issuer: ${OIDC_ISSUER_URI:http://localhost:8090/realms/myapp}
+      refresh-expired: true
+      forced-jwk-refresh-interval: PT1H
+    # Fetch userinfo from Keycloak once at login and on each token refresh.
+    # Quarkus caches it in the encrypted session cookie between refreshes,
+    # so there is no per-request call to Keycloak.
+    user-info-required: true
+    token-state-manager:
+      encryption-secret: ${TOKEN_ENCRYPTION_SECRET:change-me-in-prod-min32chars!!!!!}
+    authentication:
+      pkce-required: true
+    logout:
+      path: /logout
+      post-logout-path: /
+    connection-delay: PT60S
+
+
+  quinoa:
+    ui-dir: src/main/webui
+    build-dir: dist
+    package-manager-install: false
+    enable-spa-routing: true
+    dev-server:
+      port: 3000
+
+  http:
+    port: 8080
+    auth:
+      permission:
+        ops:
+          paths: /q/health*,/q/info
+          policy: permit
+        public:
+          paths: /assets/*
+          policy: permit
+        authenticated:
+          paths: /*
+          policy: authenticated
+
+  smallrye-health:
+    ui:
+      enable: false
+
+  info:
+    build:
+      enabled: true
+    git:
+      enabled: false
+    os:
+      enabled: false
+    java:
+      enabled: false
+
+portal:
+  orgs:
+    - key: acme-corp
+      value: Acme Corp
+    - key: globex
+      value: Globex
+    - key: initech
+      value: Initech
+  apps:
+    - id: crm
+      name: CRM
+      url: ${DOMAIN_CRM_URL:http://localhost:8081}
+      description: Customer Relationship Management
+    - id: billing
+      name: Billing
+      url: ${DOMAIN_BILLING_URL:http://localhost:8082}
+      description: Billing & Invoicing

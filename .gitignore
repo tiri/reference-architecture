@@ -1,0 +1,41 @@
+# Maven / Quarkus build output
+target/
+*.jar
+*.war
+*.class
+
+# Quarkus dev mode cache
+.quarkus/
+
+# Node / React — matched at any depth so webui dirs are covered
+node_modules/
+node/
+dist/
+.vite/
+*.local
+*.tar.gz
+*.tgz
+
+# npm / yarn / pnpm logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment / secrets
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+*.iml
+.idea/
+*.iws
+*.ipr
+*.code-workspace
+
+# Maven wrapper JAR (downloaded automatically)
+.mvn/wrapper/maven-wrapper.jar
