@@ -1,0 +1,352 @@
+schemaVersion: 2.2.0
+metadata:
+  name: datenportal
+  displayName: Datenportal — Plattform
+  description: >-
+    Cloud-Entwicklungsumgebung für die gesamte Plattform: beide geteilten Bibliotheken,
+    das Portal, das Demo-Modul sowie IAM, Modul-Datenbank und die Datenplattform (Impala).
+  version: 0.1.0
+  language: Java
+  projectType: Quarkus
+  tags:
+    - Quarkus
+    - React
+    - Keycloak
+    - PostgreSQL
+
+# Jede Anwendung und jede Bibliothek ist ein eigenes Repository (Bausteinsicht 5.2), also
+# klont der Arbeitsbereich sie alle nebeneinander — genau wie lokal, wo `shared-ui` über
+# eine `file:`-Abhängigkeit und `shared-bff` über das lokale Maven-Repository gefunden wird.
+#
+# ANPASSEN: Die Remotes zeigen auf Platzhalter. Vor dem ersten Einsatz auf die echten
+# Repository-Adressen und den gewünschten Zweig ändern.
+projects:
+  - name: shared-bff
+    description: Geteilte Backend-Logik (Maven-Abhängigkeit)
+    git:
+      checkoutFrom:
+        revision: main
+      remotes:
+        origin: https://example.org/datenportal/shared-bff.git
+  - name: shared-ui
+    description: Geteilte Frontend-Logik (npm-Abhängigkeit, TypeScript-Quelltext)
+    git:
+      checkoutFrom:
+        revision: main
+      remotes:
+        origin: https://example.org/datenportal/shared-ui.git
+  - name: portal-app
+    description: Portal — Anwendungsübersicht
+    git:
+      checkoutFrom:
+        revision: main
+      remotes:
+        origin: https://example.org/datenportal/portal-app.git
+  - name: demo-app
+    description: Demo-Modul — Datensätze, Änderungsanträge, Batch-Lauf
+    git:
+      checkoutFrom:
+        revision: main
+      remotes:
+        origin: https://example.org/datenportal/demo-app.git
+  - name: dev-starter
+    description: Diese Entwicklungsumgebung (Realm, Datenbank-Initialisierung, Doku)
+    git:
+      checkoutFrom:
+        revision: main
+      remotes:
+        origin: https://example.org/datenportal/dev-starter.git
+  - name: arch-docs
+    description: Architekturdokumentation (arc42) — das Zielbild
+    git:
+      checkoutFrom:
+        revision: main
+      remotes:
+        origin: https://example.org/datenportal/arch-docs.git
+
+components:
+  # Alle Container eines Arbeitsbereichs teilen sich das Netzwerk. Deshalb erreichen die
+  # Anwendungen IAM und Datenbanken unter localhost und den gewohnten Ports — die
+  # Standardwerte aus den application.properties gelten unverändert.
+  - name: tools
+    container:
+      image: quay.io/devfile/universal-developer-image:ubi9-latest
+      memoryRequest: 2Gi
+      memoryLimit: 6Gi
+      cpuRequest: 500m
+      cpuLimit: "4"
+      mountSources: true
+      volumeMounts:
+        - name: m2
+          path: /home/user/.m2
+        - name: npm-cache
+          path: /home/user/.npm
+      env:
+        - name: MAVEN_OPTS
+          value: -Xmx3g
+      endpoints:
+        - name: portal
+          targetPort: 8081
+          exposure: public
+          protocol: https
+        - name: demo
+          targetPort: 8082
+          exposure: public
+          protocol: https
+        - name: portal-vite
+          targetPort: 5173
+          exposure: public
+          protocol: https
+        - name: demo-vite
+          targetPort: 5174
+          exposure: public
+          protocol: https
+        # Nicht-Anwendungs-Endpunkte bleiben im Arbeitsbereich.
+        - name: portal-management
+          targetPort: 9001
+          exposure: internal
+        - name: demo-management
+          targetPort: 9002
+          exposure: internal
+
+  - name: keycloak
+    container:
+      image: quay.io/keycloak/keycloak:26.5
+      memoryLimit: 1Gi
+      cpuLimit: "1"
+      mountSources: true
+      env:
+        - name: KC_BOOTSTRAP_ADMIN_USERNAME
+          value: admin
+        - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+          value: admin
+      # Der Realm liegt im geklonten dev-starter, nicht im Abbild. Die Back-Channel-Adresse
+      # zeigt dort auf den Docker-Host, weil die Module lokal neben Compose laufen; hier
+      # teilen sich alle Container ein Netzwerk, also ist es localhost.
+      command: ["/bin/bash", "-c"]
+      args:
+        - >-
+          mkdir -p /opt/keycloak/data/import &&
+          sed 's|host.docker.internal|localhost|g'
+          /projects/dev-starter/keycloak/realm-platform.json
+          > /opt/keycloak/data/import/realm-platform.json &&
+          /opt/keycloak/bin/kc.sh start-dev --import-realm
+      endpoints:
+        - name: keycloak
+          targetPort: 8080
+          exposure: public
+          protocol: https
+
+  - name: demo-db
+    container:
+      image: postgres:17
+      memoryLimit: 512Mi
+      mountSources: true
+      env:
+        - name: POSTGRES_DB
+          value: demo
+        - name: POSTGRES_USER
+          value: demo
+        - name: POSTGRES_PASSWORD
+          value: demo
+        # Wie lokal auf 5433, damit die Standardkonfiguration der Module passt.
+        - name: PGPORT
+          value: "5433"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+      volumeMounts:
+        - name: demo-db-data
+          path: /var/lib/postgresql/data
+      # Legt die unprivilegierte Anwendungsrolle an — ein Superuser würde die
+      # zeilenbasierten Zugriffsregeln umgehen (Konzept 8.2).
+      command: ["/bin/bash", "-c"]
+      args:
+        - >-
+          cp /projects/dev-starter/postgres/init/*.sql /docker-entrypoint-initdb.d/ 2>/dev/null;
+          exec docker-entrypoint.sh postgres
+
+  # ---------------------------------------------------------------- Datenplattform
+  # Apache Impala. Eine Abfrage-Maschine ohne eigenen Tabellenkatalog, deshalb sind es
+  # vier Container: Metastore, Impalas Statestore und Katalog, der Daemon selbst – und
+  # Kudu darunter, weil nur dort einzelne Zeilen änderbar sind.
+  #
+  # ACHTUNG: Die Impala-Abbilder gibt es nur für amd64. In einem arm64-Arbeitsbereich
+  # laufen sie nicht.
+  - name: hive-metastore
+    container:
+      image: apache/impala:4.5.0-impala_quickstart_hms
+      memoryLimit: 1Gi
+      mountSources: true
+      volumeMounts:
+        - name: datenplattform-warehouse
+          path: /var/lib/hive
+      command: ["/bin/bash", "-c"]
+      args:
+        - >-
+          cp /projects/dev-starter/datenplattform/conf/hive-site.xml /opt/hive/conf/ &&
+          exec /hms-entrypoint.sh hms
+
+  - name: kudu-master
+    container:
+      image: apache/kudu:1.18-ubuntu
+      memoryLimit: 1Gi
+      env:
+        - name: KUDU_MASTERS
+          value: localhost
+        - name: MASTER_ARGS
+          value: --unlock_unsafe_flags
+      volumeMounts:
+        - name: datenplattform-kudu
+          path: /var/lib/kudu
+      args: ["master"]
+
+  - name: kudu-tserver
+    container:
+      image: apache/kudu:1.18-ubuntu
+      memoryLimit: 1Gi
+      env:
+        - name: KUDU_MASTERS
+          value: localhost
+        - name: TSERVER_ARGS
+          value: --unlock_unsafe_flags
+      args: ["tserver"]
+
+  - name: statestored
+    container:
+      image: apache/impala:4.5.0-statestored
+      memoryLimit: 1Gi
+      args: ["-redirect_stdout_stderr=false", "-logtostderr", "-v=1"]
+
+  - name: catalogd
+    container:
+      image: apache/impala:4.5.0-catalogd
+      memoryLimit: 2Gi
+      mountSources: true
+      volumeMounts:
+        - name: datenplattform-warehouse
+          path: /var/lib/hive
+      command: ["/bin/bash", "-c"]
+      args:
+        - >-
+          cp /projects/dev-starter/datenplattform/conf/*.xml /opt/impala/conf/ &&
+          exec /opt/impala/bin/daemon_entrypoint.sh catalogd
+          -redirect_stdout_stderr=false -logtostderr -v=1
+          -hms_event_polling_interval_s=1
+
+  - name: impalad
+    container:
+      image: apache/impala:4.5.0-impalad_coord_exec
+      memoryLimit: 4Gi
+      mountSources: true
+      volumeMounts:
+        - name: datenplattform-warehouse
+          path: /var/lib/hive
+      endpoints:
+        - name: impala-jdbc
+          targetPort: 21050
+          exposure: internal
+        - name: impala-ui
+          targetPort: 25000
+          exposure: internal
+      command: ["/bin/bash", "-c"]
+      args:
+        - >-
+          cp /projects/dev-starter/datenplattform/conf/*.xml /opt/impala/conf/ &&
+          exec /opt/impala/bin/daemon_entrypoint.sh impalad
+          -redirect_stdout_stderr=false -logtostderr -v=1
+          -kudu_master_hosts=localhost:7051 -mem_limit=3gb
+
+  - name: m2
+    volume:
+      size: 3Gi
+  - name: npm-cache
+    volume:
+      size: 1Gi
+  - name: demo-db-data
+    volume:
+      size: 1Gi
+  - name: datenplattform-warehouse
+    volume:
+      size: 2Gi
+  - name: datenplattform-kudu
+    volume:
+      size: 2Gi
+
+commands:
+  # Reihenfolge wie lokal: erst die Bibliotheken, dann die Module.
+  - id: install-shared-bff
+    exec:
+      label: "1 · shared-bff ins lokale Maven-Repository installieren"
+      component: tools
+      workingDir: ${PROJECTS_ROOT}/shared-bff
+      commandLine: mvn -B install -DskipTests
+      group:
+        kind: build
+        isDefault: true
+  - id: install-shared-ui
+    exec:
+      label: "2 · Abhängigkeiten von shared-ui installieren"
+      component: tools
+      workingDir: ${PROJECTS_ROOT}/shared-ui
+      commandLine: npm install
+      group:
+        kind: build
+  - id: seed-datenplattform
+    exec:
+      label: "3 · Datenplattform mit Saatdaten füllen"
+      component: tools
+      workingDir: ${PROJECTS_ROOT}/dev-starter
+      # Impala hat keinen Startpunkt, der SQL beim ersten Hochfahren ausführt.
+      commandLine: >-
+        until impala-shell -i localhost:21050 -q "select 1" > /dev/null 2>&1; do sleep 10; done &&
+        impala-shell -i localhost:21050 -f datenplattform/init/01-schema.sql
+      group:
+        kind: build
+  - id: prepare
+    composite:
+      label: "Arbeitsbereich vorbereiten"
+      commands:
+        - install-shared-bff
+        - install-shared-ui
+      parallel: false
+
+  - id: run-portal
+    exec:
+      label: "Portal starten (8081)"
+      component: tools
+      workingDir: ${PROJECTS_ROOT}/portal-app
+      commandLine: mvn -B quarkus:dev
+      group:
+        kind: run
+        isDefault: true
+  - id: run-demo
+    exec:
+      label: "Demo-Modul starten (8082)"
+      component: tools
+      workingDir: ${PROJECTS_ROOT}/demo-app
+      commandLine: mvn -B quarkus:dev
+      group:
+        kind: run
+  - id: run-batch
+    exec:
+      label: "Batch-Lauf einmal ausführen"
+      component: tools
+      workingDir: ${PROJECTS_ROOT}/demo-app
+      commandLine: >-
+        mvn -B clean package -DskipTests &&
+        java -Dquarkus.profile=batch -jar target/quarkus-app/quarkus-run.jar --batch
+      group:
+        kind: run
+  - id: test-demo
+    exec:
+      label: "Tests des Demo-Moduls"
+      component: tools
+      workingDir: ${PROJECTS_ROOT}/demo-app
+      commandLine: mvn -B test
+      group:
+        kind: test
+        isDefault: true
+
+events:
+  postStart:
+    - prepare

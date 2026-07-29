@@ -1,0 +1,189 @@
+name: platform-dev
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-platform.json:/opt/keycloak/data/import/realm-platform.json:ro
+    healthcheck:
+      # curl is not in the image; TCP probe via bash built-in
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /realms/platform HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | head -1 | grep -q '200'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # ------------------------------------------------------------------ Datenplattform
+  # The leading source of the raw records: Apache Impala, reached over JDBC. An external
+  # system — never part of a module, never sharing a database with one.
+  #
+  # Impala is a query engine, not a store, so a usable stand-in is five containers: a
+  # metastore for the table definitions, Impala's three daemons, and Kudu underneath.
+  # Kudu is the part that makes rows mutable — on the usual file-backed tables Impala can
+  # only append, and the module has to be able to write back a verification.
+  #
+  # NOTE: the Impala images are published for amd64 only, so on an arm64 machine they run
+  # emulated. Expect a slow first start.
+
+  # Table definitions. Impala itself keeps none.
+  hive-metastore:
+    image: apache/impala:4.5.0-impala_quickstart_hms
+    platform: linux/amd64
+    container_name: hive-metastore
+    hostname: hive-metastore
+    command: hms
+    volumes:
+      - datenplattform-warehouse:/var/lib/hive
+      - ./datenplattform/conf/hive-site.xml:/opt/hive/conf/hive-site.xml:ro
+
+  kudu-master:
+    image: apache/kudu:1.18-ubuntu
+    container_name: kudu-master
+    hostname: kudu-master
+    command: master
+    environment:
+      KUDU_MASTERS: kudu-master
+      # The image runs Kudu without a synchronised clock, which Kudu treats as an unsafe
+      # flag and refuses to start on unless the unlock is explicit. Fine for a sandbox.
+      # One tablet server in the sandbox, so one replica. Kudu would otherwise refuse
+      # to create a table, defaulting to three.
+      MASTER_ARGS: --unlock_unsafe_flags --default_num_replicas=1
+    volumes:
+      - datenplattform-kudu-master:/var/lib/kudu
+
+  kudu-tserver:
+    image: apache/kudu:1.18-ubuntu
+    container_name: kudu-tserver
+    hostname: kudu-tserver
+    command: tserver
+    environment:
+      KUDU_MASTERS: kudu-master
+      TSERVER_ARGS: --unlock_unsafe_flags
+    depends_on:
+      - kudu-master
+    volumes:
+      - datenplattform-kudu-tserver:/var/lib/kudu
+
+  statestored:
+    image: apache/impala:4.5.0-statestored
+    platform: linux/amd64
+    container_name: statestored
+    hostname: statestored
+    command: ["-redirect_stdout_stderr=false", "-logtostderr", "-v=1"]
+    # /bin/sh in these images is dash, which has no /dev/tcp — the probe has to be bash.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/24000"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  catalogd:
+    image: apache/impala:4.5.0-catalogd
+    platform: linux/amd64
+    container_name: catalogd
+    hostname: catalogd
+    # Ordered by readiness, not just by start. Impala's daemons register with the
+    # statestore, and a daemon that comes up against a not-yet-ready statestore ends up
+    # with a registration the statestore no longer knows — "Unexpected registration ID",
+    # logged in a tight loop, with catalog updates silently skipped.
+    depends_on:
+      statestored:
+        condition: service_healthy
+      hive-metastore:
+        condition: service_started
+    command:
+      - "-redirect_stdout_stderr=false"
+      - "-logtostderr"
+      - "-v=1"
+      # Off: polling the metastore for events needs a notification listener configured on
+      # the metastore side, and nothing here changes tables behind Impala's back.
+      - "-hms_event_polling_interval_s=0"
+    volumes:
+      - datenplattform-warehouse:/var/lib/hive
+      - ./datenplattform/conf:/opt/impala/conf:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/26000"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # The only daemon anything outside talks to: HiveServer2 on 21050 is the JDBC endpoint.
+  impalad:
+    image: apache/impala:4.5.0-impalad_coord_exec
+    platform: linux/amd64
+    container_name: impalad
+    hostname: impalad
+    depends_on:
+      statestored:
+        condition: service_healthy
+      catalogd:
+        condition: service_healthy
+      kudu-master:
+        condition: service_started
+    ports:
+      # 21050 = HiveServer2 (JDBC), 25000 = the daemon's own web UI.
+      - "21050:21050"
+      - "25000:25000"
+    command:
+      - "-redirect_stdout_stderr=false"
+      - "-logtostderr"
+      - "-v=1"
+      - "-kudu_master_hosts=kudu-master:7051"
+      - "-mem_limit=3gb"
+    volumes:
+      - datenplattform-warehouse:/var/lib/hive
+      - ./datenplattform/conf:/opt/impala/conf:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/21050"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # impala-shell, for loading the seed. Not started with the stack — `docker compose run`
+  # brings it up for one command. The daemons' own images carry no client.
+  impala-client:
+    image: apache/impala:4.5.0-impala_quickstart_client
+    platform: linux/amd64
+    profiles: ["tools"]
+    depends_on:
+      impalad:
+        condition: service_healthy
+    volumes:
+      - ./datenplattform:/datenplattform:ro
+    entrypoint: ["impala-shell", "-i", "impalad:21050"]
+
+  demo-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: demo
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+    ports:
+      - "5433:5432"
+    volumes:
+      - demo-db-data:/var/lib/postgresql/data
+      # Creates the unprivileged application role; superusers would bypass RLS.
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo -d demo"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+# Named explicitly: the generated name would be "platform-dev_default", and Hive resolves
+# the metastore host through the search domain — an underscore there is not a legal URI
+# hostname, and Impala fails to start on it.
+networks:
+  default:
+    name: platform-dev
+
+volumes:
+  demo-db-data:
+  datenplattform-warehouse:
+  datenplattform-kudu-master:
+  datenplattform-kudu-tserver:

@@ -1,0 +1,5 @@
+@import "@platform/shared-ui/src/styles/globals.css";
+
+/* Tailwind must scan the shared lib's sources via the real path — the scanner does not
+   follow the node_modules symlink created by the file: dependency. */
+@source "../../../shared-ui/src";
