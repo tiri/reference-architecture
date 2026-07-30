@@ -2,10 +2,10 @@
 
 Demo module of the platform: tenant-scoped records with a mass operation. One deployment that is BFF, UI delivery and self-verifying API at once, with its own database.
 
-- Port **8082** (Vite dev server: **5174**)
+- Port **9002** (Vite dev server: **5174**)
 - `GET /api/t/{tenant}/records` — the tenant is in the path, so responses cache per tenant
 - `POST /api/t/{tenant}/changes` notes a change as a **draft**, `POST .../changes/submit` hands every draft to the batch, `DELETE .../changes/{id}` takes one back. A change is accepted, never executed in the request
-- Reads and writes the **Datenbasis** (Cloudera) over a JDBC connection as the module itself — no OIDC in that direction, the user's token stops at this module's API
+- Reads and writes the **Datenbasis** over a JDBC connection as the module itself — no OIDC in that direction, the user's token stops at this module's API
 - **Changes are staged.** Editing a name in the list notes it; the row then shows the requested value beside the one the platform still holds, and stays marked until the batch has applied it. Nothing is handed over until the user reviews and submits
 - **One source.** The records are paged, sorted and searched *on the Datenbasis*; the module keeps no copy, so there is no second list and no way for the two to disagree. Its own database holds only what the platform does not know about — the change queue and the audit trail. That is also where row-level security applies; the records' isolation rests on the mandatory tenant predicate and on the platform's own authorization
 
@@ -17,7 +17,7 @@ Prerequisites: [dev-starter](../dev-starter) running, `shared-bff` installed (`m
 mvn quarkus:dev
 ```
 
-Open http://localhost:8082 and log in as `alice`/`alice`.
+Open http://localhost:9002 and log in as `alice`/`alice`.
 
 ### Mass operation (the scheduled run)
 

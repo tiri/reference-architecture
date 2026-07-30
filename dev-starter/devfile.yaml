@@ -4,7 +4,7 @@ metadata:
   displayName: Datenportal — Plattform
   description: >-
     Cloud-Entwicklungsumgebung für die gesamte Plattform: beide geteilten Bibliotheken,
-    das Portal, das Demo-Modul sowie IAM, Modul-Datenbank und die Datenbasis (Impala über Kudu).
+    das Portal, das Demo-Modul sowie IAM, Modul-Datenbank und die Datenbasis.
   version: 0.1.0
   language: Java
   projectType: Quarkus
@@ -88,11 +88,11 @@ components:
           value: -Xmx3g
       endpoints:
         - name: portal
-          targetPort: 8081
+          targetPort: 9001
           exposure: public
           protocol: https
         - name: demo
-          targetPort: 8082
+          targetPort: 9002
           exposure: public
           protocol: https
         - name: portal-vite
@@ -105,10 +105,10 @@ components:
           protocol: https
         # Nicht-Anwendungs-Endpunkte bleiben im Arbeitsbereich.
         - name: portal-management
-          targetPort: 9001
+          targetPort: 9101
           exposure: internal
         - name: demo-management
-          targetPort: 9002
+          targetPort: 9102
           exposure: internal
 
   - name: keycloak
@@ -168,56 +168,43 @@ components:
           exec docker-entrypoint.sh postgres
 
   # ---------------------------------------------------------------- Datenbasis
-  # Kudu, weil nur dort einzelne Zeilen änderbar sind, und Impala darüber. Impala ist
-  # eine Abfrage-Maschine ohne eigenen Tabellenkatalog und braucht deshalb Metastore,
-  # Statestore, Katalog und Daemon — hier alle in einem Abbild, das das Kudu-Projekt für
-  # seinen Schnellstart veröffentlicht.
+  # Die Datenbasis ist ein fremdbetriebenes System: die führende Quelle der Datensätze. Im
+  # Arbeitsbereich ist sie ein eigener Postgres-Server neben dem des Moduls — nicht eine
+  # zweite Datenbank auf demselben. Beides wäre nicht verbindbar, aber ein gemeinsamer Server
+  # teilt Version, Neustart, Sicherung und Cache: die Spielwiese wäre stillschweigend
+  # einfacher als das, wofür sie steht. Getrennt lässt sich die Grenze auch anfassen — dieser
+  # Dienst kann einzeln gestoppt werden.
   #
-  # ACHTUNG: Das Impala-Abbild gibt es nur für amd64. In einem arm64-Arbeitsbereich
-  # läuft es nicht.
-  - name: kudu-master
+  # Das Modul erreicht die Datensätze über eine Schnittstelle, nicht über einen Treiber: eine
+  # Installation richtet die Datenquelle auf das, was sie tatsächlich betreibt.
+  - name: datenbasis-db
     container:
-      image: apache/kudu:1.18-ubuntu
-      memoryLimit: 1Gi
+      image: postgres:17
+      memoryLimit: 512Mi
+      mountSources: true
       env:
-        - name: KUDU_MASTERS
-          value: localhost
-        - name: MASTER_ARGS
-          value: --unlock_unsafe_flags --default_num_replicas=1
+        # Der Eigentümer steht für den Betreiber des fremden Systems. Die Anmeldung des
+        # Moduls legt das Init-Skript an — mit Rechten auf den Daten und keinen am Schema.
+        - name: POSTGRES_DB
+          value: datenbasis
+        - name: POSTGRES_USER
+          value: datenbasis
+        - name: POSTGRES_PASSWORD
+          value: datenbasis
+        # Wie lokal auf 5435, damit die Standardkonfiguration der Module passt.
+        - name: PGPORT
+          value: "5435"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
       volumeMounts:
-        - name: datenplattform-kudu
-          path: /var/lib/kudu
-      args: ["master"]
+        - name: datenbasis-db-data
+          path: /var/lib/postgresql/data
+      command: ["/bin/bash", "-c"]
+      args:
+        - >-
+          cp /projects/dev-starter/datenbasis/init/*.sql /docker-entrypoint-initdb.d/ 2>/dev/null;
+          exec docker-entrypoint.sh postgres
 
-  - name: kudu-tserver
-    container:
-      image: apache/kudu:1.18-ubuntu
-      memoryLimit: 1Gi
-      env:
-        - name: KUDU_MASTERS
-          value: localhost
-        - name: TSERVER_ARGS
-          value: --unlock_unsafe_flags
-      args: ["tserver"]
-
-  - name: impala
-    container:
-      image: apache/kudu:impala-latest
-      memoryLimit: 4Gi
-      env:
-        - name: KUDU_MASTERS
-          value: localhost:7051
-      endpoints:
-        - name: impala-jdbc
-          targetPort: 21050
-          exposure: internal
-        - name: impala-beeswax
-          targetPort: 21000
-          exposure: internal
-        - name: impala-ui
-          targetPort: 25000
-          exposure: internal
-      args: ["impala"]
 
   - name: m2
     volume:
@@ -228,7 +215,7 @@ components:
   - name: demo-db-data
     volume:
       size: 1Gi
-  - name: datenplattform-kudu
+  - name: datenbasis-db-data
     volume:
       size: 2Gi
 
@@ -254,15 +241,12 @@ commands:
       commandLine: ./npm-workspace.sh
       group:
         kind: build
-  - id: seed-datenplattform
+  - id: seed-datenbasis
     exec:
-      label: "3 · Datenplattform mit Saatdaten füllen"
+      label: "3 · Datenbasis mit Saatdaten füllen"
       component: tools
       workingDir: ${PROJECTS_ROOT}/dev-starter
-      # Impala hat keinen Startpunkt, der SQL beim ersten Hochfahren ausführt.
-      commandLine: >-
-        until impala-shell -i localhost:21000 -q "select 1" > /dev/null 2>&1; do sleep 10; done &&
-        impala-shell -i localhost:21000 -f datenplattform/init/01-schema.sql
+      commandLine: ./datenbasis/seed.sh
       group:
         kind: build
   - id: prepare
@@ -275,7 +259,7 @@ commands:
 
   - id: run-portal
     exec:
-      label: "Portal starten (8081)"
+      label: "Portal starten (9001)"
       component: tools
       workingDir: ${PROJECTS_ROOT}/portal-app
       commandLine: mvn -B quarkus:dev
@@ -284,7 +268,7 @@ commands:
         isDefault: true
   - id: run-demo
     exec:
-      label: "Demo-Modul starten (8082)"
+      label: "Demo-Modul starten (9002)"
       component: tools
       workingDir: ${PROJECTS_ROOT}/demo-app
       commandLine: mvn -B quarkus:dev

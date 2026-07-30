@@ -33,14 +33,14 @@ This page answers only two questions the documentation cannot: **where does each
 | Row-level security, tenant bound per transaction | `demo-app` — [`V1__audit.sql`](../../demo-app/src/main/resources/db/migration/V1__audit.sql), [`V2__change_request.sql`](../../demo-app/src/main/resources/db/migration/V2__change_request.sql), `TenantBinding` |
 | Audit table, append-only | `demo-app` — `V1__audit.sql`, `AuditService` |
 | Change queue + batch as a start option | `demo-app` — `V2__change_request.sql`, `ChangeService`, `BatchRunner`, `DemoMain --batch` |
-| Datenbasis over JDBC, own principal | `demo-app` — `Datenbasis`, second datasource; `dev-starter` — Impala on :21050 with Kudu underneath |
+| Datenbasis over JDBC, own principal | `demo-app` — `RecordCatalog` over a second datasource; `dev-starter` — its own Postgres server on :5435, module login with no schema rights |
 
 ## Deliberate differences from the target
 
 | Topic | Reference | Why |
 |---|---|---|
 | Kubernetes deployment, network separation, image hardening | not present | Operational concern of a different team ([8.6](../../arch-docs/README.md#8-querschnittliche-konzepte)); nothing to prove locally |
-| Datenbasis authorization | local Impala with seed data, no Ranger | There is no real platform to talk to here; the sandbox has no authorization to enforce |
+| Datenbasis authorization | a local database with seed data, no policy engine | There is no real leading source to talk to here; the sandbox has no authorization to enforce |
 | Tenant binding to the database lives in `demo-app`, not `shared-bff` | module-level | `shared-bff` must stay usable by modules without a database — the portal has none. Moves to the library as soon as a second database module exists (technical debt, 11.7) |
 
 ## Two traps that are invisible in tests
@@ -48,7 +48,7 @@ This page answers only two questions the documentation cannot: **where does each
 Both are in [chapter 11](../../arch-docs/README.md#11-risiken-und-praxisfallen); they are repeated here only because the fix is a property of *this* repository:
 
 - **The application must not be a database superuser.** A superuser bypasses row-level security unconditionally, so the second line of tenant isolation would be silently off while every test stays green. `dev-starter` therefore creates an unprivileged `demo_app` role — see [postgres/init/01-app-role.sql](../postgres/init/01-app-role.sql). `force row level security` is needed as well, or the policy would not apply to the table owner.
-- **The Datenbasis datasource is not JTA-enlisted** (`jdbc.transactions=disabled`). Sharing a transaction with the module's own database would need XA and — worse — a failure on Impala would roll back the queue, so the run would replay the same requests forever.
+- **The Datenbasis datasource is not JTA-enlisted** (`jdbc.transactions=disabled`). Sharing a transaction with the module's own database would need XA and — worse — a failure out there would roll back the queue, so the run would replay the same requests forever. Measured, not feared: enlisting it made the batch retry to its own guard.
 
 ## Local specifics
 

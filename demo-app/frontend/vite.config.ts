@@ -5,7 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 // Same dev pattern as the portal: browser talks only to Vite; BFF paths are proxied
 // without Host rewriting so OIDC redirect URIs stay on this origin (registered in the
 // dev realm).
-const bff = "http://localhost:8082";
+const bff = "http://localhost:9002";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

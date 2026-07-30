@@ -20,82 +20,38 @@ services:
 
 
   # ------------------------------------------------------------------- Datenbasis
-  # Two stand-ins for the same foreign system, and only one runs at a time.
+  # The leading source of the records, and a foreign system: somebody else operates it, the
+  # module only reads it and writes what an accepted change touches.
   #
-  # By default the Datenbasis is a database on the Postgres below: native on any machine,
-  # up in seconds, and enough for everything except the one thing Cloudera teaches — that
-  # a page costs seconds and the design has to earn it. Nothing in the module knows the
-  # difference; it is one property.
+  # Its own server, not another database on the module's own. Two databases on one server
+  # cannot be joined either, but they share a version, a restart, a backup and a page cache
+  # — so the sandbox would quietly be easier than the thing it stands for. Separate, the
+  # boundary is real: it can be stopped on its own to see what the module does when the
+  # leading source is unreachable.
   #
-  # For the real engine:  docker compose --profile impala up -d
-  #                       DEMO_DATENBASIS=impala in the module
-  kudu:
-    image: apache/kudu:1.18-ubuntu
-    profiles: ["impala"]
-    container_name: kudu
-    hostname: kudu
+  # The module reaches it through an interface rather than through a driver, so a deployment
+  # points the datasource at whatever it actually operates and changes no code. Filling it:
+  # ./datenbasis/seed.sh [rows]
+  datenbasis-db:
+    image: postgres:17
     environment:
-      KUDU_MASTERS: kudu
-      # The image runs Kudu without a synchronised clock, which Kudu treats as an unsafe
-      # flag and refuses to start on unless the unlock is explicit. Fine for a sandbox.
-      # One tablet server, so one replica — Kudu would otherwise refuse to create a table,
-      # defaulting to three.
-      MASTER_ARGS: --unlock_unsafe_flags --default_num_replicas=1
-      TSERVER_ARGS: --unlock_unsafe_flags
-    # Kudu has no single-node binary: a master holds the catalogue and the tablet
-    # locations, a tablet server holds the rows. Two processes, one container — the
-    # image's entrypoint derives each one's data directory from the command it is given.
-    # The master runs in the background: if it dies the container stays up on the tablet
-    # server, which is the sandbox trade for one container fewer.
-    entrypoint: ["/bin/bash", "-c"]
-    command:
-      - |
-        /kudu-entrypoint.sh master &
-        exec /kudu-entrypoint.sh tserver
-    volumes:
-      - datenplattform-kudu:/var/lib/kudu
-
-  # The whole of Impala in one container: metastore, statestore, catalog and the daemon,
-  # started in the right order by the image's own entrypoint, plus impala-shell.
-  #
-  # It replaces five services and the configuration they needed between them — a shared
-  # hive-site.xml, a health-gated startup order, and a separate client image. None of that
-  # was teaching anything about this architecture; it was the cost of assembling Impala by
-  # hand. The Kudu project publishes this for its own quickstart.
-  #
-  # The price is the version: 3.4.0, from 2020, against the 4.5.0 the separate images
-  # carry. Everything this module asks of it — instr, strright, utc_timestamp, UPSERT into
-  # Kudu, keyset paging — is there and verified. A deployment would run a current Cloudera
-  # build; a sandbox that starts in one step is worth more here than matching its version.
-  impala:
-    image: apache/kudu:impala-latest
-    profiles: ["impala"]
-    platform: linux/amd64
-    container_name: impala
-    hostname: impala
-    command: impala
-    environment:
-      KUDU_MASTERS: kudu:7051
-    depends_on:
-      - kudu
+      # The operator of the foreign system owns this; the module's own login is created by
+      # the init script with rights on the data and none on the schema.
+      POSTGRES_DB: datenbasis
+      POSTGRES_USER: datenbasis
+      POSTGRES_PASSWORD: datenbasis
     ports:
-      # 21050 = HiveServer2, the JDBC endpoint the modules use.
-      # 21000 = Beeswax, which this image's impala-shell speaks by default.
-      - "21050:21050"
-      - "21000:21000"
-      - "25000:25000"
-    # The metastore is embedded Derby and is created on first start. Until it can serve
-    # a write, Impala is listening but not usable — and a DDL sent into that window does
-    # not fail, it hangs, and takes the metastore worker with it. So the probe is a DDL:
-    # it is idempotent, it is what the seed does next, and it goes green only when that
-    # will work. Port 21050 opens roughly a minute before this does.
+      # 5435, not 5434: the unified-gateway variant of this platform uses that one, and
+      # both are often up at the same time on the same machine.
+      - "5435:5432"
+    volumes:
+      - datenbasis-db-data:/var/lib/postgresql/data
+      - ./datenbasis/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "impala-shell", "-i", "localhost:21000", "-q",
-             "create database if not exists warmup"]
-      interval: 15s
-      timeout: 60s
-      retries: 40
-      start_period: 30s
+      test: ["CMD-SHELL", "pg_isready -U datenbasis -d datenbasis"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   demo-db:
     image: postgres:17
@@ -115,13 +71,7 @@ services:
       timeout: 3s
       retries: 12
 
-# Named explicitly: the generated name would be "platform-dev_default", and Hive resolves
-# the metastore host through the search domain — an underscore there is not a legal URI
-# hostname, and Impala fails to start on it.
-networks:
-  default:
-    name: platform-dev
 
 volumes:
   demo-db-data:
-  datenplattform-kudu:
+  datenbasis-db-data:

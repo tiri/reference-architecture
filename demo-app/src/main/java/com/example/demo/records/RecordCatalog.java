@@ -9,10 +9,11 @@ import java.util.Set;
  * The records of the Datenbasis, as this module needs to read them.
  *
  * <p>This is the module's side of the boundary, not the platform's: it names what the
- * module asks for, and the answer types belong to it rather than to whatever system
- * happens to answer. Today that is Impala over Cloudera; the pages, resources and
- * dashboard that depend on this interface say nothing about it, which is the whole point —
- * they were written against a record catalogue, not against a query engine.
+ * module asks for, and the answer types belong to it rather than to whatever system happens
+ * to answer. In development that is a PostgreSQL database; a deployment's leading source is
+ * whatever the organisation operates. The pages, resources and dashboard that depend on
+ * this interface say nothing about either, which is the point — they were written against a
+ * record catalogue, not against a query engine.
  *
  * <p>Read-only by construction. Writing back is {@link RecordWriter}, which only the batch
  * holds: a resource serving a page cannot change the leading source by accident.

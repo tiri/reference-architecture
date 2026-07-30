@@ -10,9 +10,9 @@ import java.util.StringJoiner;
 /**
  * The question a reader has put to a list, independent of where the list is kept.
  *
- * <p>Both stores in this module are asked the same way — the platform over Impala and the
- * change queue in the module's own database — so the vocabulary, the wire format and the
- * rules live here, and only the SQL function names differ.
+ * <p>Both lists in this module are asked the same way — the Datenbasis and the change
+ * queue in the module's own database — so the vocabulary, the wire format and the rules
+ * live here, and each store only supplies its own columns.
  *
  * <p>Nothing here knows it is reached over HTTP: a condition this list does not offer is
  * an {@link IllegalArgumentException}, and turning that into a status code is the web
@@ -53,25 +53,6 @@ public final class Conditions {
         /** A condition without a value is not yet a condition — the reader is still typing. */
         boolean isComplete() {
             return !operator.needsValue() || (value != null && !value.isBlank());
-        }
-    }
-
-    /**
-     * How a store spells the two comparisons that are not plain operators. Everything else
-     * about the SQL is the same on both.
-     */
-    public enum Dialect {
-        /** Impala, over the platform. */
-        IMPALA("strright", "instr"),
-        /** PostgreSQL, both as the light Datenbasis and as the module's own database. */
-        POSTGRES("right", "strpos");
-
-        private final String fromRight;
-        private final String position;
-
-        Dialect(String fromRight, String position) {
-            this.fromRight = fromRight;
-            this.position = position;
         }
     }
 
@@ -132,8 +113,7 @@ public final class Conditions {
      * @param anyColumns what "all fields" means here
      */
     public static Where where(String tenantColumn, String tenantId, List<Condition> conditions,
-            Map<String, String> columns, List<String> anyColumns, Dialect dialect,
-            Parameters parameters) {
+            Map<String, String> columns, List<String> anyColumns, Parameters parameters) {
         StringBuilder sql = new StringBuilder("where " + tenantColumn + " = "
                 + parameters.at(1));
         List<String> params = new ArrayList<>();
@@ -149,7 +129,7 @@ public final class Conditions {
                     : List.of(columns.get(condition.field()));
             StringJoiner alternatives = new StringJoiner(" or ", " and (", ")");
             for (String column : targets) {
-                alternatives.add(predicate(column, condition, params, dialect, parameters));
+                alternatives.add(predicate(column, condition, params, parameters));
             }
             sql.append(alternatives);
         }
@@ -160,12 +140,12 @@ public final class Conditions {
      * One comparison, as SQL with its value bound.
      *
      * <p>Deliberately not LIKE: the reader's text would then carry {@code %} and {@code _}
-     * as wildcards, so a search for "50 %" would quietly mean something else — and Impala
-     * has no ESCAPE clause to take that back. Comparing the text as text needs no escaping
-     * at all, and reads the same on both stores.
+     * as wildcards, so a search for "50 %" would quietly mean something else. Comparing the
+     * text as text needs no escaping at all, and no engine has to be trusted to implement an
+     * ESCAPE clause the same way.
      */
     private static String predicate(String column, Condition condition, List<String> params,
-            Dialect dialect, Parameters parameters) {
+            Parameters parameters) {
         if (condition.operator() == Operator.SET) {
             return column + " is not null";
         }
@@ -175,13 +155,13 @@ public final class Conditions {
         params.add(condition.value());
         String first = parameters.at(params.size());
         return switch (condition.operator()) {
-            case CONTAINS -> dialect.position + "(lower(" + column + "), lower(" + first + ")) > 0";
-            case STARTS -> dialect.position + "(lower(" + column + "), lower(" + first + ")) = 1";
+            case CONTAINS -> "strpos(lower(" + column + "), lower(" + first + ")) > 0";
+            case STARTS -> "strpos(lower(" + column + "), lower(" + first + ")) = 1";
             // The value is needed twice — once for how many characters to take from the
             // right, once to compare them. Neither driver has a reusable placeholder.
             case ENDS -> {
                 params.add(condition.value());
-                yield dialect.fromRight + "(lower(" + column + "), length(" + first + ")) = lower("
+                yield "right(lower(" + column + "), length(" + first + ")) = lower("
                         + parameters.at(params.size()) + ")";
             }
             case EQUALS -> "lower(" + column + ") = lower(" + first + ")";

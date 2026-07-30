@@ -33,7 +33,7 @@ export default function App() {
 
 /**
  * The router resolves every href against its own base, which turns the portal's absolute
- * address into "/http:/localhost:8081". Links that already name a scheme are not this
+ * address into "/http:/localhost:9001". Links that already name a scheme are not this
  * application's routes and are left alone. (Called unconditionally — it is a hook.)
  */
 function useAbsoluteAwareHref(href: string) {

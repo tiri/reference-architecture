@@ -9,7 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import java.time.Instant;
 
-/** A requested change, waiting for the timed run to apply it to the Cloudera. */
+/** A requested change, waiting for the timed run to apply it to the Datenbasis. */
 @Entity
 public class ChangeRequest extends PanacheEntityBase {
 

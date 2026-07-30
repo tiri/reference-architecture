@@ -1,8 +1,8 @@
--- The Datenbasis table, the light stand-in's copy of what Cloudera holds.
+-- The Datenbasis table: what the leading source holds, in the shape the module reads it.
 --
--- Same columns and same meaning as datenplattform/init/01-schema.sql, so the module
--- cannot tell the two apart. What differs is only what a row store needs and an
--- analytical engine does not: an index, so a filtered page does not read the table.
+-- Kept to what the module actually asks for, so a deployment can see at a glance what it
+-- needs from the real thing. The one addition a row store needs is an index, so a filtered
+-- page does not read the whole table — see indexes.sql.
 create table if not exists record (
     id          text primary key,
     tenant_id   text not null,

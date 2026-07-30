@@ -2,7 +2,7 @@
 
 The platform portal: an **authenticated application launcher**. One deployment that is BFF and UI delivery at once, exposing `GET /api/apps` — the tile list from configuration (`portal.apps[*]`). The portal has **no database**: module URLs are deployment configuration, not data.
 
-- Port **8081** (Vite dev server: **5173**)
+- Port **9001** (Vite dev server: **5173**)
 - The whole module is behind login: an unauthenticated visit redirects straight to the IAM.
 - Tiles are plain links to each module's own origin — modules stay independent, and the IAM session makes the target module's login invisible.
 
@@ -14,7 +14,7 @@ Prerequisites: [dev-starter](../dev-starter) running, `shared-bff` installed (`m
 mvn quarkus:dev
 ```
 
-Open http://localhost:8081 and log in as `alice`/`alice`.
+Open http://localhost:9001 and log in as `alice`/`alice`.
 
 ### Full build
 

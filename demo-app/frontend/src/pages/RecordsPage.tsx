@@ -7,7 +7,7 @@ import type { DataColumn, FilterField } from "@platform/shared-ui";
 import { changeColors, changeLabels } from "./changes";
 import type { Counts, Pending } from "./changes";
 
-/** A record as Cloudera holds it. The module keeps no copy. */
+/** A record as the Datenbasis holds it. The module keeps no copy. */
 interface PlatformRecord {
   id: string;
   name: string;

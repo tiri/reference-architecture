@@ -109,8 +109,7 @@ public class ChangeQuery {
         String comparison = ascending ? ">" : "<";
 
         Conditions.Where where = Conditions.where("tenant_id", tenantId, conditions,
-                COLUMNS, ANY_COLUMNS, Conditions.Dialect.POSTGRES,
-                Conditions.Parameters.NUMBERED);
+                COLUMNS, ANY_COLUMNS, Conditions.Parameters.NUMBERED);
         List<Object> params = new ArrayList<>(where.params());
 
         String seek = "";

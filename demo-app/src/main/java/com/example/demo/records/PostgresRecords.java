@@ -4,7 +4,6 @@ import com.example.demo.query.Conditions;
 import com.example.demo.query.Conditions.Condition;
 import io.quarkus.agroal.DataSource;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Typed;
 import jakarta.inject.Inject;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -17,24 +16,27 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The Datenbasis as a PostgreSQL database — the light stand-in, for developing against.
+ * The Datenbasis as a PostgreSQL database.
  *
- * <p>It answers exactly what {@link RecordCatalog} asks and nothing else, so the module
- * cannot tell which one it is talking to. That is the point of the interface, and this
- * class is the proof: everything above it — the conditions, the cursor, counting once per
- * question — was written against a catalogue, not against Impala.
+ * <p>A foreign system, and treated as one throughout: its own database, its own role, its
+ * own connection, never enlisted in the module's transactions and never joined to the
+ * module's own tables. That it happens to be the same PostgreSQL server in development is
+ * a convenience of the sandbox and nothing this class relies on — only the JDBC URL says so.
  *
- * <p><b>What it is not.</b> A row store is not an analytical engine. Against Cloudera a
- * page costs seconds and the design has to earn that; here it costs milliseconds. The
- * behaviour is identical, the pressure is not, so a change that looks fast here should
- * still be measured against {@link com.example.demo.cloudera.Cloudera} before it is
- * believed.
+ * <p>Reached through {@link RecordCatalog} rather than directly, because a deployment's
+ * leading source is not this: it is whatever the organisation runs, and the adapter for it
+ * belongs here beside this one. Everything above the interface — the conditions, the
+ * cursor, counting once per question — was written against a catalogue and needs no
+ * changing for that.
  *
- * <p>Still a foreign system: its own database, its own role, its own connection. No
- * transaction is shared with the module's own store, and nothing here may be joined to it.
+ * <p><b>What it is not.</b> A row store is not an analytical engine: here a page costs
+ * milliseconds, and on a columnar engine over tens of millions of rows the same page costs
+ * seconds. Measured, not assumed — an `order by` over 48 million rows took 28 s on Impala
+ * while this store answers the same question in half a second. Which is why the design
+ * pages by cursor and counts once per question rather than per page: those choices cost
+ * nothing here and are the difference between usable and not there.
  */
 @ApplicationScoped
-@Typed(PostgresRecords.class)
 public class PostgresRecords implements RecordCatalog, RecordWriter {
 
     /** What "alle Felder" means: the columns a reader would think of as the record's text. */
@@ -84,8 +86,7 @@ public class PostgresRecords implements RecordCatalog, RecordWriter {
         int safeSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
 
         Conditions.Where where = Conditions.where("tenant_id", tenantId, conditions,
-                COLUMNS, ANY_COLUMNS, Conditions.Dialect.POSTGRES,
-                Conditions.Parameters.JDBC);
+                COLUMNS, ANY_COLUMNS, Conditions.Parameters.JDBC);
         List<Object> params = new ArrayList<>(where.params());
 
         String seek = "";
@@ -151,8 +152,10 @@ public class PostgresRecords implements RecordCatalog, RecordWriter {
             statement.setString(1, newName);
             statement.setString(2, recordId);
             statement.setString(3, tenantId);
-            // Unlike Impala over HiveServer2, this one can say whether it changed anything —
-            // and a change that touched no row is a failure, not a success.
+            // A change that touched no row is a failure, not a success: the batch must record
+            // it as failed rather than mark the request applied. Not every store can tell you
+            // this — an analytical engine over HiveServer2 reports no affected-row count at
+            // all, and an adapter for one would have to read the record back to find out.
             if (statement.executeUpdate() == 0) {
                 throw new DatenbasisException(
                         "record " + recordId + " not found for tenant " + tenantId, null);

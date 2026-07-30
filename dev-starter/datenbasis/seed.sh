@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# Fills the light Datenbasis — the PostgreSQL stand-in that runs by default.
+# Fills the Datenbasis — the records the module reads and never owns.
 #
 #   ./datenbasis/seed.sh              # 16 named records, as the demo starts out
-#   ./datenbasis/seed.sh 80000000     # as many as you like
+#   ./datenbasis/seed.sh 5000000      # as many as you like, to feel the paging
 #
-# The equivalent for the real engine is datenplattform/seed.sh and seed-large.sh, which
-# need the impala profile running. Both put the same records in the same shape; only the
-# system underneath differs.
+# Size costs time and disk: rows are generated single-threaded and every one is stored, so
+# a few million take a minute or two and eighty million about half an hour and some twenty
+# gigabytes. A few million is enough to see cursor paging behave.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ROWS="${1:-0}"
-psql() { docker compose exec -T demo-db psql -v ON_ERROR_STOP=1 -U datenbasis_reader -d datenbasis "$@"; }
+# As the owner, on the Datenbasis server — not as the module's login, which has no rights
+# to create a table. The default privileges from datenbasis/init grant it what it needs.
+psql() { docker compose exec -T datenbasis-db psql -v ON_ERROR_STOP=1 -U datenbasis -d datenbasis "$@"; }
 
 echo "==> Datenbasis: schema"
 psql -q -f - < datenbasis/schema.sql

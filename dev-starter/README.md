@@ -1,6 +1,6 @@
 # dev-starter
 
-Local development environment for the modular portal platform: Keycloak (IAM) and the databases of all modules that need one.
+Local development environment for the modular portal platform: Keycloak (IAM), the databases of all modules that need one, and the Datenbasis they read.
 
 ## What's inside
 
@@ -8,8 +8,7 @@ Local development environment for the modular portal platform: Keycloak (IAM) an
 |---|---|---|
 | Keycloak | http://localhost:8080 | admin console: `admin` / `admin` |
 | Demo DB (Postgres 17) | localhost:5433, db `demo` | app role `demo_app` / `demo_app`, owner `demo` / `demo` |
-| Datenbasis (light stand-in) | database `datenbasis` on localhost:5433 | role `datenbasis_reader` / `datenbasis_reader` |
-| Datenbasis (Cloudera stand-in: Impala + Kudu) | only with `--profile impala`: JDBC localhost:21050, shell localhost:21000, web UI http://localhost:25000 | no authentication in the sandbox |
+| Datenbasis (Postgres 17) | localhost:5435, db `datenbasis` | module login `datenbasis_reader` / `datenbasis_reader`, owner `datenbasis` / `datenbasis` |
 
 The modules connect as **`demo_app`**, deliberately not as the superuser `demo`: a Postgres superuser bypasses row-level security, which would silently disable the second line of tenant isolation. See [postgres/init/01-app-role.sql](postgres/init/01-app-role.sql).
 
@@ -24,101 +23,83 @@ Realm `platform` is imported automatically from [keycloak/realm-platform.json](k
 
 A `mandant_<id>` role *is* the tenant permission — there is no separate tenant claim.
 
-## Two Datenbasis stand-ins
+## The Datenbasis
 
-The Datenbasis is a foreign system, and the module reaches it through an interface rather
-than through a driver — so which one is behind it is a property, not a code change.
+The Datenbasis is a **foreign system**: the leading source of the records, operated by
+someone else. The module keeps no copy of them, so every page a user turns is a query
+against it.
 
-| | containers | starts in | what it is for |
-|---|---|---|---|
-| **PostgreSQL** (default) | none of its own | seconds | developing: native on any machine, and a page in milliseconds |
-| **Impala + Kudu** | 2, `--profile impala` | ~40 s, emulated on arm64 | measuring: an analytical engine where a page really does cost seconds |
-
-The module picks with `DEMO_DATENBASIS=postgres` (default) or `impala`. Same artefact
-either way — what you ran is what you ship.
+Here it is a **PostgreSQL server of its own** on 5435, beside the module's own on 5433. Not
+a second database on one server: those cannot be joined either, but they share a version, a
+restart, a backup and a page cache, so the sandbox would be quietly easier than the thing it
+stands for. Separate, the boundary is real — and it can be stopped on its own:
 
 ```bash
-docker compose up -d                       # Keycloak + Postgres, two containers
-./datenbasis/seed.sh                        # 16 records
-./datenbasis/seed.sh 5000000                # or a few million, to feel the paging
-
-docker compose --profile impala up -d      # adds Kudu and Impala
-./datenplattform/seed.sh                    # their own seed scripts
-DEMO_DATENBASIS=impala java -jar demo-app/target/quarkus-app/quarkus-run.jar
+docker compose stop datenbasis-db
 ```
 
-**Size costs disk here.** Generating rows is single-threaded and every row is stored, so
-on a laptop VM eighty million takes about half an hour and some twenty gigabytes once the
-indexes are built — measured, after a first attempt filled the disk. A few million is
-enough to see paging behave; the eighty-million case belongs on the Impala profile, which
-stores it compressed and columnar.
+With it down the module stays up and readiness stays green — a foreign system being
+unreachable is not a reason for an orchestrator to restart this instance. The record pages
+and the dashboard answer **503 `Datenbasis nicht erreichbar`** as `application/problem+json`,
+and the change queue keeps working, because that is the module's own database. Verified by
+stopping it.
 
-Everything the module does works the same on both — conditions, sorting, cursor paging,
-and writing an accepted change back. What differs is what it costs, and that is the only
-reason to keep the heavy one: a design that looks fine at millisecond latency has not been
-tested by anything.
+The module connects as `datenbasis_reader`, which owns nothing here: rights on the data,
+none on the schema. The owner is `datenbasis`, standing in for whoever operates the real
+thing. A deployment restricts the same principal with its own policy engine, on hardware
+this module never touches.
 
-## Start
+It reaches the records through `RecordCatalog` rather than through a driver, so a deployment
+points the datasource at whatever it actually operates and changes no code. That interface is
+the only reason this substitution is possible at all.
 
 ```bash
-docker compose up -d
-./datenplattform/seed.sh
+docker compose up -d           # Keycloak + two Postgres servers, three containers
+./datenbasis/seed.sh           # 16 named records
+./datenbasis/seed.sh 5000000   # or a few million, to feel the paging
 ```
 
-Keycloak takes ~30s on first boot, Impala about 40s — `docker compose up -d` returns
-before either is usable, so the seed script waits.
+Keycloak takes ~30s on first boot and `docker compose up -d` returns before it is usable;
+the databases are ready in seconds.
 
-**The Datenbasis needs the second command.** Impala has no equivalent of the Postgres
-entrypoint that runs SQL on first start, so the table and its records are created
-explicitly. The script waits for Impala, loads
-[datenplattform/init/01-schema.sql](datenplattform/init/01-schema.sql) and prints the row
-count per tenant. It is idempotent — run it again whenever you want the seed back.
-
-## Large data
+## Data size
 
 The base seed is 16 records — enough to see the app work, not enough to see whether the
-design holds. [`seed-large.sh`](seed-large.sh) fills the **Datenbasis** — the records live there
-and nowhere else, so that is the only place to fill:
+design holds. Pass a row count to fill it properly; the script is idempotent and leaves the
+named base records alone. The module's own database is never seeded: it holds no records,
+only the change queue and the audit trail, and both grow from use.
 
-```bash
-./seed-large.sh            # 100_000 records, ~5s
-./seed-large.sh 500000     # up to 1_000_000
-```
+**Size costs time and disk.** Rows are generated single-threaded and every one is stored, so
+a few million take a minute or two, and eighty million about half an hour and some twenty
+gigabytes once the indexes are built — measured, after a first attempt filled the disk. A
+few million is enough to see cursor paging behave.
 
-Idempotent, and it leaves the named base records alone. The module's own database is not
-seeded at all: it holds no records, only the change queue and the audit trail, and both
-grow from use.
-
-Measured at 100k (60,010 of them for tenant `a`) — every one of these is a query on Impala:
+Measured at 3,000,016 records — 1,800,010 of them tenant `a`'s — through the API, warm:
 
 | | |
 |---|---|
-| First page, sorted | 291 ms |
-| Page 5,000 | 312 ms — a deep offset costs the same as a shallow one |
-| Sort by name | 219 ms |
-| Search, 7,501 matches | 646 ms |
-| Batch, per record | ~60 ms, and two round-trips |
+| First page, sorted by id — including the count of all 1,800,010 | 97 ms |
+| Next page, by cursor | **13 ms** |
+| Search "beginnt mit Customer", 225,001 matches | 308 ms |
+| Sort by name | 266 ms |
+| Dashboard | 911 ms |
+| One page of the change queue | 22 ms |
 
-The first four are the honest price of keeping no copy: a page costs hundreds of
-milliseconds where a row-store would take single digits. The last row is the one to read
-before designing any mass operation: the batch writes one record at a time, so a job of
-60,010 would run for about an hour. Impala is built for set-based work; chunked
-`update … where id in (…)` is the shape that fits it.
+The first two rows are the whole argument for cursor paging: the count is what costs, and it
+is asked once per question rather than once per page. The last row is the module's own
+database, which holds no records — only the queue and the audit trail — and shows what a
+list costs when the data is yours.
 
-**Impala is slow to start**, especially on an arm64 machine: the image is published for
-amd64 only and therefore runs emulated. Impala is a query engine and keeps no tables of
-its own, so it needs a Hive Metastore for the table definitions plus its own statestore,
-catalog and daemon — here all in the single `apache/kudu:impala-latest` image the Kudu
-project publishes for its quickstart, which starts them in the right order itself. Kudu
-underneath is what makes single rows mutable; on Impala's usual file-backed tables the
-module could not write an accepted change back at all.
+The dashboard is the slowest screen, and deliberately one request: it is three aggregates
+over every row of the tenant (how many records, how many carry an applied change, how many
+categories they span). A screen of small independent requests would not be faster, it would
+just fail in pieces.
 
-That image carries **Impala 3.4** against the 4.5 of the separate daemon images. Everything
-this platform asks of it is there and verified — `instr`, `strright`, `utc_timestamp`,
-`UPSERT` into Kudu, keyset paging. Its `impala-shell` is the 3.4 one and speaks Beeswax on
-**21000**; the modules use HiveServer2 on **21050** as before. A deployment runs a current
-Cloudera build, and a sandbox that comes up in one step is worth more here than matching
-its version.
+Why the design is shaped this way at all, when a page here costs milliseconds: a leading
+source is not necessarily a row store. The same questions were measured against a columnar
+engine over 48 million rows, where a filtered `count(*)` took 8–11 s and the `order by`
+behind a first page took 28 s. Cursor paging and counting once per question cost nothing
+here and are the difference between usable and not there.
 
 ## Re-importing the realm
 
@@ -126,12 +107,17 @@ Realm import only happens when the realm does not exist yet. After editing
 `realm-platform.json`, re-import with:
 
 ```bash
-docker compose down -v && docker compose up -d
+docker compose up -d --force-recreate keycloak
 ```
+
+Keycloak keeps no volume here, so recreating just that container drops its database and
+imports the realm again. `docker compose down -v` would also do it — and would take the
+module's database and the whole seeded Datenbasis with it, which is rarely what you wanted
+for a change to a redirect URI.
 
 ## Realm design notes
 
-- **Clients** `portal` and `demo` (confidential, Authorization Code Flow with PKCE). Redirect URIs cover both the module ports (8081/8082) and the Vite dev-server ports (5173/5174) so the frontend dev proxy flow works. The modules therefore set `quarkus.oidc.authentication.pkce-required=true`.
+- **Clients** `portal` and `demo` (confidential, Authorization Code Flow with PKCE). Redirect URIs cover both the module ports (9001/9002) and the Vite dev-server ports (5173/5174) so the frontend dev proxy flow works. The modules therefore set `quarkus.oidc.authentication.pkce-required=true`.
 - **Audience mapper per client**: Keycloak does not put the client id into `aud` of the access token by default. Each client has an audience mapper — without it, every module's JWT audience validation rejects the token.
 - **Tenancy is a realm role**, not a claim of its own: `mandant_a` / `mandant_b`. There are no groups. The modules read roles from the **userinfo** endpoint (`quarkus.oidc.roles.source=userinfo`), so the realm-roles mapper on the `roles` scope must be exposed there — a role revoked in Keycloak then takes effect without waiting for the token to expire.
 - **Built-in scopes are declared explicitly** (`basic`, `profile`, `email`, `roles`): a realm import that declares any `clientScopes` suppresses Keycloak's automatic creation of the built-in scopes, so they must be spelled out — otherwise tokens are missing `sub`, profile claims, and `realm_access.roles`.
@@ -151,17 +137,21 @@ Two things must be adjusted before first use:
 
 - **Repository URLs** in `projects` point at placeholders.
 - **Redirect URIs and the issuer.** In a workspace the modules are served from generated
-  HTTPS hostnames, not `localhost:8081`. Add those hostnames to the `portal` and `demo`
+  HTTPS hostnames, not `localhost:9001`. Add those hostnames to the `portal` and `demo`
   clients in the realm, and set `PLATFORM_IAM_ISSUER` to the workspace's Keycloak URL —
   the browser and the module must agree on the issuer, otherwise the login round-trip
   fails at the authorization endpoint.
 
 ## Port map (whole platform)
 
-| App | Served | Vite dev |
-|---|---|---|
-| Portal | http://localhost:8081 | http://localhost:5173 |
-| Demo | http://localhost:8082 | http://localhost:5174 |
+| App | Served | Management | Vite dev |
+|---|---|---|---|
+| Portal | http://localhost:9001 | :9101 | http://localhost:5173 |
+| Demo | http://localhost:9002 | :9102 | http://localhost:5174 |
+
+The modules live in the 9000 range, clear of the 8080 Keycloak takes and of anything else
+that habitually wants 8080–8082. Each one's management interface — health, metrics — is its
+app port plus 100, so the pairing is readable rather than remembered.
 
 ## Run order (full platform)
 

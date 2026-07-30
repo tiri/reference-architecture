@@ -26,9 +26,7 @@ import java.util.Map;
  * disagree.
  *
  * <p>Beside the port it serves, not beside an adapter: this class asks a
- * {@link RecordCatalog} and never learns which system answered. It sat in the {@code
- * cloudera} package while Impala was the only possibility, and the name outlived the
- * dependency.
+ * {@link RecordCatalog} and never learns which system answered.
  *
  * <p>The tenant is part of the path, so every response has its own cache key and no cache
  * has to reason about cookies. It is still checked against the token on every request.

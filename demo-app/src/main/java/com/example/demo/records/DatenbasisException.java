@@ -3,9 +3,9 @@ package com.example.demo.records;
 /**
  * The Datenbasis could not answer.
  *
- * <p>Owned by the port, not by whichever adapter is behind it. A caller that had to catch
- * {@code ClouderaException} would be written against Impala — the one thing this boundary
- * exists to prevent — and the module would stop being able to exchange the two stand-ins
+ * <p>Owned by the port, not by the adapter behind it. A caller that had to catch a
+ * {@code PostgresException} would be written against PostgreSQL — the one thing this
+ * boundary exists to prevent — and the module would stop being able to exchange the store
  * the moment anyone did.
  *
  * <p>Unchecked, and nothing in this module catches it: a page that cannot be read is a 500,
