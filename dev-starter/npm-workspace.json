@@ -1,0 +1,10 @@
+{
+  "name": "platform-workspace",
+  "private": true,
+  "description": "Ties the checked-out frontends together so a module resolves @platform/shared-ui by version, from the checkout beside it, with no registry in between. Owned by dev-starter because it is part of the development environment, not of any module; linked into the checkout root by npm-workspace.sh, because node resolves a package by walking a directory's ancestors and only a file up there is on that path.",
+  "workspaces": [
+    "shared-ui",
+    "portal-app/frontend",
+    "demo-app/frontend"
+  ]
+}

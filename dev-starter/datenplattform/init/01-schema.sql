@@ -7,7 +7,7 @@
 -- module's contract with the platform works at all.
 --
 -- Loaded by `./datenplattform/seed.sh`, or by hand:
---   docker compose exec -T impalad impala-shell -f - < datenplattform/init/01-schema.sql
+--   docker compose exec -T impala impala-shell -i localhost:21000 -f - < datenplattform/init/01-schema.sql
 
 create database if not exists datenplattform;
 
@@ -21,7 +21,11 @@ create table datenplattform.record (
     changed_at  timestamp,
     primary key (id)
 )
-partition by hash (id) partitions 2
+-- Eight tablets, not two. Hash partitioning spreads the rows evenly, and a scan runs one
+-- range per tablet in parallel: with 80 million records two tablets means two workers and
+-- 40 million rows each, which is both slower to read and more than Kudu likes to carry in
+-- one tablet. Eight matches the cores this sandbox is given.
+partition by hash (id) partitions 8
 stored as kudu;
 
 -- The seed: the same records the module lists, so the demo has something to work on.

@@ -1,11 +1,11 @@
 import { ChevronSelectorVertical, LogOut01 } from "@untitledui/icons";
 import { Button as AriaButton } from "react-aria-components";
-import { Avatar } from "@platform/shared-ui/src/components/base/avatar/avatar";
-import { Dropdown } from "@platform/shared-ui/src/components/base/dropdown/dropdown";
-import { logout } from "@platform/shared-ui/src/auth/auth";
-import { useAuth } from "@platform/shared-ui/src/auth/AuthProvider";
-import { useModuleInfo } from "@platform/shared-ui/src/components/app-shell/AppShell";
-import { cx } from "@platform/shared-ui/src/utils/cx";
+import { Avatar } from "../base/avatar/avatar";
+import { Dropdown } from "../base/dropdown/dropdown";
+import { logout } from "../../auth/auth";
+import { useAuth } from "../../auth/AuthProvider";
+import { useModuleInfo } from "./AppShell";
+import { cx } from "../../utils/cx";
 
 /**
  * User card at the foot of the sidebar: identity at a glance; what is running, and the

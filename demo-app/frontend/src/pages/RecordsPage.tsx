@@ -26,11 +26,13 @@ const fields: FilterField[] = [
 ];
 
 const columns: DataColumn[] = [
-  { id: "recordId", label: "Datensatz", isRowHeader: true, allowsSorting: true, placeholder: "w-24" },
-  { id: "name", label: "Name", allowsSorting: true, className: "w-full", placeholder: "w-56" },
-  { id: "category", label: "Kategorie", allowsSorting: true, placeholder: "w-24" },
-  { id: "pending", label: "Änderung", placeholder: "w-16" },
-  { id: "changedAt", label: "Geändert", allowsSorting: true, placeholder: "w-28" },
+  { id: "recordId", label: "Datensatz", isRowHeader: true, allowsSorting: true, width: 121, placeholder: "w-24" },
+  // The one column that takes what is left: it carries the most, and two values at once
+  // while a change is pending.
+  { id: "name", label: "Name", allowsSorting: true, width: "1fr", placeholder: "w-56" },
+  { id: "category", label: "Kategorie", allowsSorting: true, width: 137, placeholder: "w-24" },
+  { id: "pending", label: "Änderung", width: 116, placeholder: "w-16" },
+  { id: "changedAt", label: "Geändert", allowsSorting: true, width: 117, placeholder: "w-28" },
 ];
 
 export function RecordsPage({ title }: { title: string }) {
@@ -53,11 +55,10 @@ export function RecordsPage({ title }: { title: string }) {
    * closes, the row keeps its old name — which is exactly what a *successful* request
    * looks like here, since nothing changes until the batch runs.
    */
-  const submitting = async (work: Promise<unknown>) => {
+  const submitting = async <T,>(work: Promise<T>, done: (result: T) => void) => {
     try {
-      await work;
+      done(await work);
       setNotice(null);
-      records.reload();
       void loadCounts();
     }
     catch (failure: unknown) {
@@ -78,13 +79,27 @@ export function RecordsPage({ title }: { title: string }) {
    * An edit is a *request*, not a write: the module never changes the platform on a
    * keystroke. The row keeps its old name until the batch has applied the change, which
    * is why the queued count next to it goes up straight away.
+   *
+   * <p>Only that row changes, and only in the browser. What it now shows follows entirely
+   * from what was just accepted — the requested name beside the one still in force — so
+   * asking the Datenbasis for the page again would spend a query, and against the platform
+   * seconds of one, to be told something already known. The rest of the table does not
+   * move, and the reader keeps their place.
    */
   const rename = (recordId: string, newValue: string) =>
     submitting(
-      apiFetch(tenantPath("/changes"), {
+      apiFetch<{ id: number }>(tenantPath("/changes"), {
         method: "POST",
-        body: JSON.stringify({ recordId, kind: "rename", newValue }),
+        body: JSON.stringify({ recordId, kind: "RENAME", newValue }),
       }),
+      (accepted) =>
+        records.patch(
+          (row) => row.id === recordId,
+          (row) => ({
+            ...row,
+            pending: { id: accepted.id, kind: "RENAME", newValue, status: "DRAFT" },
+          }),
+        ),
     );
 
   if (records.error) {
@@ -92,7 +107,7 @@ export function RecordsPage({ title }: { title: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
       {notice && (
         <p className="rounded-lg bg-error-primary px-4 py-3 text-sm text-error-primary ring-1 ring-error">
           {notice}
@@ -151,14 +166,16 @@ export function RecordsPage({ title }: { title: string }) {
           // page holds. Not the one with page numbers: a cursor cannot land on page 137
           // without walking there, and pretending otherwise would mean the offset query
           // this was built to avoid.
-          <PaginationCardMinimal
-            align="center"
-            page={records.page + 1}
-            total={records.lastPage + 1}
-            pageSize={records.size}
-            onPageChange={records.onPageChange}
-            onPageSizeChange={records.onPageSizeChange}
-          />
+          records.rows.length > 0 || records.page > 0 ? (
+            <PaginationCardMinimal
+              align="center"
+              page={records.page + 1}
+              total={records.lastPage + 1}
+              pageSize={records.size}
+              onPageChange={records.onPageChange}
+              onPageSizeChange={records.onPageSizeChange}
+            />
+          ) : undefined
         }
       >
         {(row: PlatformRecord) => (
@@ -203,7 +220,7 @@ function NameCell({ row, onSave }: {
 }) {
   const [draft, setDraft] = useState<string | null>(null);
 
-  const requested = row.pending?.kind === "rename" ? row.pending.newValue : null;
+  const requested = row.pending?.kind === "RENAME" ? row.pending.newValue : null;
 
   if (draft === null) {
     return (

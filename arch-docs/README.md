@@ -4,7 +4,7 @@ Plattform aus unabhängigen **Modulen**. Jedes Modul bedient einen Datensatztyp 
 
 Dies ist die **einzige** Beschreibung der Architektur, in **einem** Dokument nach arc42.
 
-Das Dokument beschreibt das Zielbild **technologieneutral**: es nennt die Anforderungen an Rahmenwerk und Bibliotheken, nicht deren Produktnamen.
+Das Dokument beschreibt das Zielbild **technologieneutral**: Es nennt Anforderungen an Rahmenwerk und Bibliotheken, keine Produktnamen. Ausgenommen sind fremdbetriebene Systeme und ausdrücklich dokumentierte Ablehnungsentscheidungen.
 
 ## Der Kerngedanke
 
@@ -23,20 +23,22 @@ flowchart TB
     MB --- DB2[(DB)]
 ```
 
-Ein Modul ist **ein Deployment**, das dreierlei zugleich ist: BFF für die Anmeldung, Auslieferung der eigenen Web-Oberfläche und eigenständig prüfende API. Weil Oberfläche und API dieselbe Herkunft teilen, entfallen CORS und ein Gateway. Alles Gemeinsame ist Bibliothek, kein laufender Dienst.
+Ein Modul ist **ein Deployment** mit drei Aufgaben: BFF für die Anmeldung, Auslieferung der eigenen Web-Oberfläche und eigenständig prüfende API. Weil Oberfläche und API dieselbe Herkunft teilen, sind keine CORS-Freigaben und kein Gateway nötig. Alles Gemeinsame ist Bibliothek, kein laufender Dienst.
 
 ## Inhalt
 
 | | |
 |---|---|
 | [1 Einführung und Ziele](#1-einführung-und-ziele) | Aufgabe, Qualitätsziele, Stakeholder |
-| [2 Randbedingungen](#2-randbedingungen) | Gesetzte Regeln, Technologie, BSI-Bezug |
+| [2 Randbedingungen](#2-randbedingungen) | Gesetzte Regeln, Technologie |
 | [3 Kontextabgrenzung](#3-kontextabgrenzung) | Nachbarn: Nutzer, IAM, Datenbasis, Betrieb |
-| [4 Lösungsstrategie](#4-lösungsstrategie) | Leitgedanke und was dadurch entfällt |
+| [4 Lösungsstrategie](#4-lösungsstrategie) | Leitgedanke und Strategien je Qualitätsziel |
 | [5 Bausteinsicht](#5-bausteinsicht) | Module und die geteilten Bibliotheken |
 | [6 Laufzeitsicht](#6-laufzeitsicht) | Anmeldung, SSO, Token-Prüfung, Batch |
+| [7 Verteilungssicht](#7-verteilungssicht) | Artefakte, Konfiguration und Start des Batchlaufs |
 | [8 Querschnittliche Konzepte](#8-querschnittliche-konzepte) | Sitzung, Mandantentrennung, Protokollierung |
-| [9 Architekturentscheidungen](#9-architekturentscheidungen) | E1–E11 mit Begründung und Preis |
+| [9 Architekturentscheidungen](#9-architekturentscheidungen) | E1–E12 mit Begründung und Preis |
+| [10 Qualitätsszenarien](#10-qualitätsszenarien) | Verbindliche Abnahmeszenarien |
 | [11 Risiken und Praxisfallen](#11-risiken-und-praxisfallen) | Was real schiefgeht, nach Zeitpunkt sortiert |
 | [12 Glossar](#12-glossar) | Begriff ↔ Bezeichner im Quelltext |
 
@@ -121,43 +123,30 @@ Entwicklung und Betrieb sind getrennte Einheiten. Die Modul-Teams betreiben ihre
 | 2.2.8 | **Nur das originale IAM-Token** | Kein Token-Exchange, keine selbst ausgestellten Ersatz-Token, keine Transformation. |
 | 2.2.9 | **Zustandslose Container** | Sitzungsdaten liegen verschlüsselt beim Client, Fachdaten in der Datenbank. Jeder Container ist jederzeit ersetzbar. |
 | 2.2.10 | **Begrenztes Dienstangebot** | Private Cloud. Verfügbar: Kubernetes, relationale Datenbanken. **Nicht verfügbar**: Message-Broker, verteilter Sitzungsspeicher und vergleichbare Zusatzdienste. |
-| 2.2.11 | **Massendaten als zeitgesteuerter Lauf** | Große Datenmengen werden nicht im Request verarbeitet. Wann und wie oft der Lauf startet, gehört der Laufzeitumgebung, nicht dem Modul. |
+| 2.2.11 | **Massendaten als zeitgesteuerter Lauf** | Große Datenmengen werden nicht im Request verarbeitet. Die Plattform startet den Lauf; wann und wie oft, gehört nicht zum Modul. |
 | 2.2.12 | **Kein Benutzerbestand** | Identitäten und Rollen führt allein der IAM. Das Modul speichert keine Nutzer – eine Kopie wäre eine zweite Wahrheit, die still veraltet. |
 | 2.2.13 | **Fester Mandantenkatalog** | Ein Mandant ist eine Rolle `mandant_<id>`. Die Liste ist fest; es gibt keine Mandantenverwaltung im Modul. |
 
 ## 2.3 Technologie
 
-Festgelegt sind die **Eigenschaften**, nicht die Produkte – außer dort, wo das Produkt bereits steht, weil es fremdbetrieben ist.
+Festgelegt sind die **Eigenschaften**, nicht die Produkte – außer bei fremdbetriebenen Systemen und der ausdrücklich dokumentierten Ablehnungsentscheidung E12.
 
 | Ebene | Festlegung |
 |---|---|
-| Oberfläche | Typisierte Web-Oberfläche, als eigenständiges Paket gebaut und vom Modul ausgeliefert |
+| Oberfläche | Typisierte Web-Oberfläche, als eigenständiges Paket gebaut und vom Modul ausgeliefert; Design-System gemäß E12 |
 | Backend | Rahmenwerk mit den Eigenschaften aus E11; eine Sprache für alle Module |
 | Datenbank | Relational, je Modul eine |
 | IAM | Gesetzt: der bestehende Identity-Provider der Umgebung (2.2.6) |
 | Datenbasis | Gesetzt: Cloudera, fremdbetrieben (3.2) |
 | Laufzeit | Container-Orchestrierung |
 
-Alle Module verwenden **dieselbe** Wahl – Gleichförmigkeit ist Betriebsvoraussetzung (2.1). Begründung und Auswahlkriterien: Entscheidung E11.
-
-## 2.4 BSI IT-Grundschutz
-
-| Baustein | Thema | Verankert in |
-|---|---|---|
-| ORP.4 | Identitäts- und Berechtigungsmanagement | 8.1, 8.2 |
-| APP.3.1 | Webanwendungen (Sitzung, Eingabeprüfung) | 8.1 |
-| APP.4.4 / SYS.1.6 | Kubernetes und Containerisierung | 8.6 |
-| OPS.1.1.2 | Ordnungsgemäße IT-Administration | 2.1 |
-| OPS.1.1.5 / DER.1 | Protokollierung und Detektion | 8.4 |
-| CON.8 | Software-Entwicklung | 8.6 |
-
-Die Umsetzungsprüfung führt der ISB; dieses Dokument liefert die architektonische Grundlage.
+Alle Module verwenden **dieselbe** Wahl – Gleichförmigkeit ist Betriebsvoraussetzung (2.1). Begründung und Auswahlkriterien: Entscheidungen E11 und E12.
 
 ---
 
 # 3. Kontextabgrenzung
 
-Was zum System gehört und was nicht. Alle drei Nachbarn sind **fremdbetrieben** – keiner davon wird von den Modul-Teams entwickelt oder betrieben.
+Was zum System gehört und was nicht. Alle Nachbarn sind **fremdbetrieben** – keiner davon wird von den Modul-Teams entwickelt oder betrieben.
 
 ## 3.1 Fachlicher Kontext
 
@@ -183,10 +172,10 @@ flowchart LR
 
 | Nachbar | Kanal | Authentisierung | Eigenheiten |
 |---|---|---|---|
-| Fachanwender | HTTPS, eigene Herkunft je Modul | verschlüsseltes Sitzungs-Cookie | Kein Token im Browser (2.2.7) |
+| Fachanwender | HTTPS, eigene Herkunft je Modul | verschlüsseltes Sitzungs-Cookie | Kein für JavaScript lesbares Token (2.2.7) |
 | IAM (Keycloak) | HTTPS – OIDC Authorization Code Flow mit PKCE, `userinfo`, JWKS, Back-Channel-Logout | Client-Geheimnis je Modul | Ein OIDC-Client **je Modul** (E4), damit die Empfänger-Prüfung greift |
-| Datenbasis (Cloudera) | **JDBC-Verbindung** | eigene Kennung des Moduls – **kein OIDC** | siehe unten |
-| Betriebs-Infrastruktur | stdout-Protokolle, Kennzahl-Endpunkt auf eigenem Port | – | Der Lauf wird von außen gestartet (2.2.11) |
+| Datenbasis (Cloudera) | **JDBC-Verbindung** | eigene Kennung des Moduls | siehe unten |
+| Betriebs-Infrastruktur | stdout-Protokolle, Kennzahl-Endpunkt auf eigenem Port | – | Die Plattform startet den Lauf (2.2.11) |
 
 ### Der Token endet an der API des Moduls
 
@@ -208,7 +197,7 @@ Ohne diese Punkte startet das Modul zwar, aber die Anmeldung oder die Autorisier
 | Empfänger-Angabe | Die Client-ID des Moduls muss im **Access-Token** stehen. Viele IAM tun das nicht von sich aus und brauchen einen eigenen Zuordner |
 | Rollen | Am **userinfo-Endpunkt** verfügbar, nicht nur im Token (8.1) |
 | Rückkehradressen | Rücksprungpfad des Moduls; in der Entwicklung zusätzlich der Port des Entwicklungsservers |
-| Abmeldung | Adresse für Back-Channel-Logout je Modul (6.7) |
+| Abmeldung | Adresse für Back-Channel-Logout je Modul (6.5) |
 | Standardangaben | Kennung, Name, E-Mail müssen im Token stehen |
 
 **Rollenmodell**: Zwei getrennte Arten von Rollen, die nie vermischt werden.
@@ -251,17 +240,6 @@ Weil die Oberfläche von ihrem eigenen Backend ausgeliefert wird, muss CORS nich
 | Einheitliches Aussehen | Die Oberflächen-Bibliothek liefert Design-System und Kopfzeile – gemeinsames Erscheinungsbild ohne Laufzeitkopplung | 5.4 |
 | BSI-Konformität | Token-Prüfung, Protokollierung und Härtung sind Vorgaben der Bibliothek, nicht Fleißarbeit je Modul | 8.1, 8.4, 8.6 |
 
-## 4.3 Was dadurch entfällt
-
-| Entfallen | Ersetzt durch |
-|---|---|
-| API-Gateway, zentraler Anmeldedienst | Eigene Herkunft je Modul, die Backend-Bibliothek in jedem Modul |
-| CORS-Freigaben für fremde Herkünfte | Oberfläche und API teilen die Herkunft; der Filter listet nur diese eine |
-| Event-Bus | Verschobene Verarbeitung in einem zeitgesteuerten Lauf |
-| Zentraler Mandanten-, Audit- und Datenzugriffsdienst | Angaben aus dem Token, Tabellen je Modul, Bibliothek mit erzwungenem Mandantenfilter |
-
-Übrig bleibt: **das Modul**. Der Preis dafür steht in 5.7 und E6.
-
 ---
 
 # 5. Bausteinsicht
@@ -276,7 +254,7 @@ flowchart TB
     B --> POR[Portal<br/>Backend + Oberfläche]
     B --> MA[Modul A<br/>Backend + Oberfläche]
     B --> MB[Modul B<br/>Backend + Oberfläche]
-    MA --- ADB[(DB A<br/>Aufträge · Audit)]
+    MA --- ADB[(DB A)]
     MB --- BDB[(DB B)]
     POR -.OIDC.-> IAM[IAM · Keycloak]
     MA -.OIDC.-> IAM
@@ -287,15 +265,15 @@ flowchart TB
 
 Es gibt nur **einen Bausteintyp: das Modul.** Das Portal ist ein Modul wie jedes andere, seine Fachlichkeit ist die Modulübersicht; eine eigene Datenbank braucht es dafür nicht.
 
-Ein Modul ist **ein** Deployment, das dreierlei zugleich tut:
+Ein Modul ist **ein** Deployment mit drei Aufgaben:
 
-| Rolle | Umsetzung |
+| Aufgabe | Umsetzung |
 |---|---|
-| **BFF** | Führt den OIDC Authorization Code Flow, hält die Sitzung |
+| **BFF** | Führt den OIDC Authorization Code Flow und verwaltet die Sitzung |
 | **Auslieferung der Oberfläche** | Serviert sein eigenes gebautes Oberflächenpaket – gleiche Herkunft, sodass CORS nichts freigeben muss |
-| **Resource Server** | Stellt seine API bereit und validiert dort jeden Token vollständig (8.1) |
+| **API** | Stellt die API bereit und validiert dort jeden Token vollständig (8.1) |
 
-Diese Dreifaltigkeit in einem Prozess ist der Kern. Der CORS-Filter ist trotzdem eingeschaltet – nicht um etwas zu erlauben, sondern um alles Fremde abzuweisen. Die spätere Trennung von BFF und Resource Server bleibt möglich, ohne Code zu ändern; nur die Auslieferung ändert sich.
+Das sind keine drei getrennten Rollen oder Bausteine. BFF, Oberfläche und API bleiben Teil desselben Moduls. Es gibt keine CORS-Freigaben für fremde Herkünfte.
 
 ## 5.2 Repository-Schnitt
 
@@ -307,7 +285,7 @@ Jedes Modul und jede geteilte Bibliothek ist ein **eigenes Repository**. Kein Mo
 | **Oberflächen-Bibliothek** | Design-System und Anmeldevertrag der Oberfläche (5.4) |
 | **Portal-Modul** | Launcher, ohne Datenbank |
 | **Fachmodul** | Je Datensatztyp eines, mit eigener Datenbank |
-| **Entwicklungsumgebung** | Lokaler IAM, Datenbanken und Datenbasis
+| **Entwicklungsumgebung** | Lokaler IAM, Datenbanken und Datenbasis |
 
 ## 5.3 Die Backend-Bibliothek
 
@@ -358,7 +336,7 @@ Zwei Regeln, die man ohne Not falsch macht:
 |---|---|
 | Fehlerformat | RFC 9457 `problem+json` – einheitlich über alle Module, ohne interne Details nach außen |
 | Datenbankschema | Versionierte Schema-Migrationen je Modul |
-| Erweiterbarkeit | Jede Vorgabe ist überschreibbar; ein Modul kann Einzelteile ersetzen, ohne die Bibliothek zu verlassen |
+| Erweiterbarkeit | Fachliche Ergänzungen sind möglich. Sicherheits-, Sitzungs-, Mandanten- und Fehlerverträge sind verbindlich und nicht durch ein Modul abschaltbar |
 
 ## 5.4 Die Oberflächen-Bibliothek
 
@@ -379,7 +357,7 @@ flowchart TB
 
 | Bereich | Inhalt | Warum geteilt |
 |---|---|---|
-| **Design-System** | Komponentensatz mit eingelegtem Quelltext, unter freier Lizenz | Einheitliches Erscheinungsbild ohne Laufzeitkopplung – der einzige Weg, bei getrennten Oberflächen ein gemeinsames Aussehen zu erreichen |
+| **Design-System** | Komponentensatz mit eingelegtem Quelltext, unter freier Lizenz und mit Erweiterungspunkten für fachliche Inhalte | Einheitliches Erscheinungsbild ohne Laufzeitkopplung – der einzige Weg, bei getrennten Oberflächen ein gemeinsames Aussehen zu erreichen |
 | **Anwendungsrahmen** | Kopfzeile mit Modulname, Mandantenwahl, Nutzermenü, Zurück-Verweis ins Portal | Der Nutzer erkennt dieselbe Anwendung, obwohl er das Modul gewechselt hat |
 | **Kachel für den Launcher** | Darstellung eines Moduls in der Übersicht | Nur vom Portal genutzt, gehört aber zum gemeinsamen Aussehen |
 | **Anmeldezustand** | Lädt die Nutzerauskunft vor dem ersten Rendern; wird sie abgelehnt, führt er in die Anmeldung. Hält den aktiven Mandanten und baut daraus die Pfade | Kein Modul baut eigene Anmeldelogik |
@@ -419,7 +397,7 @@ flowchart TB
     end
     SPA --> API --> FL
     BAT --> FL
-    FL --> DB[(eigene Datenbank<br/>Aufträge · Audit)]
+    FL --> DB[(eigene Datenbank)]
     FL --> PLAT[(Datenbasis<br/>die Sätze selbst)]
 ```
 
@@ -454,7 +432,7 @@ sequenceDiagram
     P->>N: Nutzer, Rollen, erlaubte Mandanten
 ```
 
-Der Browser erhält nie einen Token. Die Oberfläche rendert erst, wenn die Nutzerauskunft beantwortet ist; welcher Mandant davon aktiv ist, entscheidet sie selbst (5.4).
+JavaScript erhält nie einen Token. Die Oberfläche rendert erst, wenn die Nutzerauskunft beantwortet ist; welcher Mandant davon aktiv ist, entscheidet sie selbst (5.4).
 
 ## 6.2 Modulwechsel – hier entsteht SSO
 
@@ -517,7 +495,7 @@ sequenceDiagram
     end
 ```
 
-Der Wechsel selbst kostet keinen Aufruf. Weil der Mandant im Pfad steht, ist die Antwort je Mandant zwischenspeicherbar.
+Der Wechsel selbst kostet keinen Aufruf. Antworten bleiben grundsätzlich `private`. Eine gemeinsame Zwischenspeicherung ist nur für Endpunkte zulässig, deren Ergebnis nachweislich weder vom Nutzer noch von seinen Fachrollen abhängt.
 
 ## 6.5 Abmeldung
 
@@ -542,19 +520,34 @@ Der Vermerk hält nur den Bezeichner der abgemeldeten Sitzung, für Minuten – 
 
 ---
 
+# 7. Verteilungssicht
+
+Jedes Modul wird als eigenständiges Artefakt ausgeliefert. Es enthält Backend und gebaute Oberfläche. Die Plattform stellt Konfiguration und Geheimnisse bereit, betreibt die Repliken und startet den Batchlauf; ein Modul enthält keinen eigenen Zeitplaner.
+
+| Artefakt | Verantwortung |
+|---|---|
+| Modul-Artefakt | BFF, API, Fachlogik und gebaute Oberfläche |
+| Datenbank je Fachmodul | Aufträge, Prüfspur und weiterer eigener Zustand |
+| Datenbasis | Führende Datensätze; fremdbetrieben |
+| Plattform-Start des Batchlaufs | Startet eine explizite Batch-Betriebsart desselben Modul-Artefakts. Kein HTTP-Endpunkt löst die Verarbeitung aus |
+
+Die Plattform bestimmt Termin, Parallelität und Ressourcen des Batchlaufs. Ein Batchlauf erhält dieselben Geheimnisse und Datenbankberechtigungen wie das Modul, aber keinen Browser- oder Benutzerkontext.
+
+---
+
 # 8. Querschnittliche Konzepte
 
-Die Mechanik hinter den Bausteinen aus Kapitel 5. Alles hier ist in den beiden geteilten Bibliotheken umgesetzt, nicht in den Modulen einzeln.
+Die geteilten Bibliotheken liefern die gemeinsame Mechanik für Anmeldung, Sitzung, Autorisierung, Oberfläche und Fehlerformat. Die Module setzen die fachliche Logik, die Mandantenbindung ihrer Datenbank und den Batchlauf um.
 
 ## 8.1 Anmeldung, Sitzung, Autorisierung
 
 ### Zwei Betriebsarten in einem Prozess
 
-Der Browser hält ausschließlich ein Cookie – einen Bearer-Token gibt es dort nicht (2.2.7). Die Anmeldung läuft deshalb für **alle** Pfade als Authorization Code Flow; unterschieden wird nicht der Mechanismus, sondern die Antwort:
+Der Browser hält ausschließlich ein verschlüsseltes Sitzungs-Cookie; die Oberfläche erhält keinen Bearer-Token (2.2.7). Die Anmeldung läuft deshalb für **alle** Pfade als Authorization Code Flow; unterschieden wird nicht der Mechanismus, sondern die Antwort:
 
 | Pfad | Betriebsart | Verhalten bei fehlendem oder ungültigem Token |
 |---|---|---|
-| API-Aufruf | Resource Server | **Abweisung statt Umleitung** – die Umleitung zum IAM wird verworfen, damit die Oberfläche die Anmeldung selbst anstoßen kann |
+| API-Aufruf | API | **Abweisung statt Umleitung** – die Umleitung zum IAM wird verworfen, damit die Oberfläche die Anmeldung selbst anstoßen kann |
 | Seitenaufruf | BFF (Code Flow) | Weiterleitung zum IAM, danach Auslieferung der Oberfläche |
 
 Das ist der Grund, warum die Prüfung auch **innerhalb** eines Moduls greift: Geprüft wird bei jedem Aufruf der **Access-Token** aus dem Cookie, nicht nur der ID-Token. Die Sitzung liefert den Token, autorisiert aber nichts.
@@ -568,7 +561,7 @@ Das Rahmenwerk legt ID-, Access- und Refresh-Token verschlüsselt im Cookie ab; 
 | Verschlüsselungsschlüssel explizit setzen, über alle Repliken gleich | Jede Replik erzeugt einen eigenen zufälligen Schlüssel und kann fremde Cookies nicht lesen – Nutzer werden scheinbar zufällig abgemeldet |
 | Cookie-Namen je Modul verschieden | Module überschreiben sich gegenseitig die Sitzung; Cookies ignorieren Portnummern |
 | `HttpOnly`, `Secure`, `SameSite=Lax` | `Lax` statt `Strict`, weil der OIDC-Rücksprung ein Wechsel der Herkunft ist |
-| CORS-Filter mit nur der eigenen Herkunft | Zweite, vom Cookie unabhängige Sperre gegen fremde Absender |
+| Keine CORS-Freigaben für fremde Herkünfte | Fremde JavaScript-Anwendungen können API-Antworten nicht lesen; dies ist kein Ersatz für CSRF-Schutz |
 | Kurze Token-Laufzeit mit stiller Erneuerung | Begrenzt das Zeitfenster eines entwendeten Cookies |
 | Strenge Content-Security-Policy | XSS ist die verbleibende Hauptgefahr: Das Cookie ist nicht lesbar, aber mitnutzbar |
 
@@ -581,14 +574,14 @@ Auf **jeder** Antwort, auch auf der ausgelieferten Oberfläche – die läuft an
 | `Content-Security-Policy` | nur eigene Herkunft; keine fremden Skripte, keine Einbettung | XSS – die Hauptgefahr, sobald das Cookie unlesbar ist |
 | `X-Content-Type-Options` | `nosniff` | Kein Raten des Inhaltstyps |
 | `X-Frame-Options` | `DENY` | Kein Einbetten in fremde Seiten |
-| `Referrer-Policy` | `same-origin` | **Nicht** `no-referrer`: sonst sendet der Browser beim Absenden eines Formulars `Origin: null` und das Modul weist seine eigene Abmeldung ab |
+| `Referrer-Policy` | `same-origin` | Bei fremden Herkünften wird keine URL weitergegeben; innerhalb derselben Herkunft bleibt die Diagnose möglich |
 | `Strict-Transport-Security` | nur hinter TLS gesetzt | Sonst bräche die Entwicklung über HTTP |
 
 ### CSRF ohne Token
 
-Kein Token-Mechanismus, sondern zwei voneinander unabhängige Sperren: Das Sitzungs-Cookie ist `SameSite=Lax` und wird bei einem fremden Absender gar nicht erst mitgeschickt; der CORS-Filter weist eine fremde Herkunft schon vor der Verarbeitung ab.
+Die Oberfläche sendet ändernde Aufrufe ausschließlich per `fetch` als JSON. Der Server akzeptiert für solche Endpunkte nur Nicht-GET-Methoden mit `Content-Type: application/json` und weist einfache Formular-Inhalte (`application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`) ab. Damit kann eine fremde HTML-Form keinen gültigen Änderungsaufruf bilden.
 
-**Bedingung**: Jede ändernde Operation bleibt eine **Nicht-GET-Methode** – bei einem Seitenaufruf per GET schickt der Browser das Cookie sehr wohl mit. Das ist die einzige Regel, auf der dieser Schutz ruht (siehe 11.2).
+Zusätzlich prüft der Server bei ändernden Browser-Aufrufen `Sec-Fetch-Site` und akzeptiert nur `same-origin`. Das Sitzungs-Cookie mit `SameSite=Lax` bleibt eine weitere Schutzschicht; ändernde Operationen dürfen nie über GET oder eine Methodenüberschreibung erreichbar sein. Der CORS-Filter erteilt keiner fremden Herkunft Leserechte, ist aber **kein** eigener CSRF-Schutz.
 
 ### Rollen aus dem userinfo-Endpunkt
 
@@ -658,18 +651,23 @@ Ein Filter im Anwendungscode wird irgendwann in einem neuen Endpunkt vergessen �
 
 Große Datenmengen werden **nicht im Request** verarbeitet (2.2.11): Der Aufruf nimmt den Wunsch entgegen und antwortet sofort, die Arbeit geschieht später in einem zeitgesteuerten Lauf desselben Moduls. Ein Broker steht dafür nicht zur Verfügung (2.2.10).
 
-Zwei Regeln gelten dabei plattformweit, alles Weitere entscheidet das Modul:
+Folgende Regeln gelten plattformweit, alles Weitere entscheidet das Modul:
 
 | Regel | Warum |
 |---|---|
-| Der Lauf wird **von außen** angestoßen | Kein Zeitplaner im Prozess und kein Endpunkt, der Arbeit auslöst – wann und wie oft gehört der Laufzeitumgebung |
+| Die Plattform startet den Lauf | Kein Zeitplaner im Prozess und kein Endpunkt, der Arbeit auslöst – wann und wie oft, entscheidet die Plattform |
 | Der Lauf ist von der Mandantentrennung **nicht ausgenommen** | Er unterliegt denselben Zugriffsregeln wie ein Nutzeraufruf (8.2) |
+| Verarbeitung ist idempotent | Ein wiederholter Start darf einen Auftrag nicht doppelt an die Datenbasis übergeben |
+| Auftrag wird exklusiv beansprucht | Parallele Läufe dürfen denselben Auftrag nicht zugleich bearbeiten |
+| Fehler bleiben sichtbar | Fehlgeschlagene Aufträge bleiben mit Fehlerursache und Zeitstempel erhalten; ein späterer Lauf kann sie nach fachlicher Freigabe erneut versuchen |
+
+Die Modul-Datenbank und die Datenbasis teilen keine Transaktion. Jede Übergabe an die Datenbasis braucht daher einen stabilen Idempotenzschlüssel oder eine fachlich idempotente Schreiboperation. Erst nach bestätigter Übergabe darf der Auftrag als erfolgreich gespeichert werden. Bei jedem Auftrag setzt der Lauf den gespeicherten Mandanten erneut und transaktionsgebunden, genau wie ein Nutzeraufruf (8.2).
 
 ## 8.4 Protokollierung
 
 | Ebene | Inhalt | Ziel |
 |---|---|---|
-| Audit | Wer, wann, welcher Mandant, welcher Datensatz, welche Aktion | Nur einfügbare Tabelle je Modul |
+| Audit | Wer, wann, welcher Mandant, welcher Datensatz, welche Aktion | Nur ergänzbare Tabelle je Modul |
 | Sicherheit | Abgelehnte Anmeldungen und Mandantenzugriffe, ungültige Token | Eigener Logger → Betriebs-Infrastruktur (OPS.1.1.5, DER.1) |
 | Betrieb | Fehler, Antwortzeiten, Ergebnisse der Batch-Läufe | Log und Kennzahlen → Überwachung |
 
@@ -713,6 +711,7 @@ Modulübergreifende Schnittstellen gibt es nicht; nur Oberfläche ↔ eigenes Ba
 | E9 | Zweite Linie Mandantentrennung | Zeilenbasierte Zugriffsregeln in der Datenbank |
 | E10 | Betriebsmodell | Übergabe an das Betriebsteam, ein Muster für alle |
 | E11 | Technologie | Auswahlkriterien statt Produktnamen; eine Wahl für alle Module |
+| E12 | Öffentliches UI-Framework | KoliBri nicht einsetzen; erweiterbares Design-System wählen |
 
 Alle entschieden.
 
@@ -791,6 +790,16 @@ Zwei Festlegungen, die aus der Vorarbeit stammen und bewusst so bleiben:
 
 Ein Wechsel des Rahmenwerks berührt die Oberflächen-Bibliothek **nicht**: Der Vertrag zwischen den Bibliotheken ist die HTTP-Schnittstelle, nicht die Technologie. Das Rahmenwerk bleibt austauschbar, solange es die Liste oben erfüllt.
 
+### E12 — KoliBri nicht als Design-System einsetzen
+
+KoliBri wird nicht als öffentliches UI-Framework der Oberflächen-Bibliothek eingesetzt. Seine Web Components sind für die vorgesehenen Fachoberflächen zu starr: Sie nehmen bei Tabellen im Wesentlichen Daten entgegen, bieten aber keinen ausreichend flexiblen Erweiterungspunkt für fachliche Inhalte pro Zeile.
+
+Ein konkreter Bedarf ist eine Aktionsschaltfläche in einer Tabellenzeile. Diese muss vom Modul fachlich bestimmt und mit eigener Aktion verbunden werden können. Lässt die Tabellen-Komponente nur Daten übergeben, aber weder eine Zelle noch Zeilenaktionen erweitern, müsste das Modul die Tabelle umgehen oder nachbauen. Beides zerstört entweder das gemeinsame Erscheinungsbild oder macht die Bibliothek wirkungslos.
+
+Das gewählte Design-System muss deshalb neben einem freien Lizenzmodell auch komponentennahe Erweiterungspunkte bieten, insbesondere Templates, Slots oder vergleichbare Render-Hooks für Zellen und Zeilenaktionen. Einheitlichkeit bleibt Ziel; sie darf nicht durch einen unflexiblen Komponentensatz gegen fachliche Erweiterbarkeit eingetauscht werden.
+
+**Preis**: Ein flexiblerer Komponentensatz erhöht die Verantwortung der Oberflächen-Bibliothek, Vorgaben für Aussehen, Bedienbarkeit und Barrierefreiheit der Erweiterungspunkte zu machen.
+
 ## 9.3 Offene Punkte
 
 | Punkt | Ansprechpartner |
@@ -799,6 +808,21 @@ Ein Wechsel des Rahmenwerks berührt die Oberflächen-Bibliothek **nicht**: Der 
 | Rotation des Cookie-Schlüssels über mehrere Repliken | Betrieb, ISB |
 | Mindestversion der Bibliotheken bei Sicherheitsfixes | Architektur, Modul-Teams |
 | Schreibbarkeit der Tabellen und Rechte des Modul-Prinzipals in der Datenbasis (3.2) | Datenbasis-Team |
+
+---
+
+# 10. Qualitätsszenarien
+
+Diese Szenarien sind verbindliche Abnahmekriterien für jedes Modul. Sie ergänzen die Unit- und Fachtests des jeweiligen Moduls.
+
+| Qualitätsziel | Szenario | Erwartung |
+|---|---|---|
+| Modultrennung | Access Token von Modul A an die API von Modul B senden | `401`; der Empfänger des Tokens wird geprüft |
+| Mandantentrennung | Aufruf für einen Mandanten ohne passende Rolle | `403` und Sicherheitsprotokollierung |
+| Zweite Datenbanklinie | Datenbankabfrage ohne gesetzten Mandanten | Keine Zeile; der Test läuft im Build gegen den unprivilegierten Anwendungsbenutzer |
+| SSO | Nach Anmeldung im Portal ein weiteres Modul öffnen | IAM leitet zurück, ohne eine Anmeldemaske zu zeigen |
+| CSRF | Fremde Seite sendet eine einfache Formularanfrage an einen ändernden Endpunkt | Keine Änderung; der Endpunkt akzeptiert weder einfachen Formularinhalt noch einen fremden Browser-Kontext |
+| Batch | Plattform startet denselben Batchlauf erneut | Bereits erfolgreich übergebene Aufträge werden nicht doppelt verarbeitet |
 
 ---
 
@@ -826,7 +850,7 @@ Der Wert dieses Kapitels liegt in der Spalte **„Woran man es merkt"** – die 
 | **Anwendung läuft als Datenbank-Superuser** | Nichts – alle Tests bleiben grün, während die zweite Linie still abgeschaltet ist | Unprivilegierte Rolle erzwingen, Negativtest im Build (8.2) |
 | **Verbindungs-Pool erbt den Mandanten** | Sporadisch falsche Daten, lastabhängig, extrem schwer zu finden | Mandant je Transaktion setzen, nicht je Verbindung |
 | **Sitzungskennung rotiert bei jedem Aufruf.** Eine zu strenge Zustandslos-Einstellung erneuert die Sitzung pro Aufruf | Parallele Aufrufe der Oberfläche scheitern sporadisch | Auf der API-Seite den Sicherheitskontext nur für die Dauer des Aufrufs halten |
-| **Ändernde Operation per GET erreichbar.** Der CSRF-Schutz beruht allein auf `SameSite=Lax`, und `Lax` schickt das Cookie bei einem Seitenaufruf per GET sehr wohl mit | Nichts – die Lücke ist unsichtbar, bis jemand sie sucht | Ändernde Endpunkte ausnahmslos als Nicht-GET führen; im Review darauf prüfen |
+| **Ändernder Endpunkt akzeptiert GET oder einfache Formularinhalte.** Eine fremde Seite könnte dann einen Browseraufruf nachbilden | Nichts – die Lücke ist unsichtbar, bis jemand sie sucht | Ausschließlich Nicht-GET mit JSON akzeptieren, Fetch-Metadata prüfen und den Negativtest aus Kapitel 10 im Build ausführen |
 
 ## 11.3 Nach einigen Wochen
 
@@ -867,7 +891,7 @@ Die Dokumentation ist deutsch, der Quelltext englisch. Diese Tabelle ist die Br�
 |---|---|---|
 | **Modul** | `<fach>-app` | Ein Deployment, das BFF, Oberfläche und eigenständig prüfende API zugleich ist. Der einzige Bausteintyp (5.1) |
 | **Portal** | `portal-app` | Modul, dessen Fachlichkeit die Modulübersicht ist. Ohne Datenbank |
-| **BFF** | – | Backend for Frontend: die serverseitige Hälfte der Anmeldung. Führt den Code Flow, hält die Token, gibt sie nie an den Browser |
+| **BFF** | – | Backend for Frontend: die serverseitige Hälfte der Anmeldung. Führt den Code Flow, hält die Token und gibt sie nie an JavaScript |
 | **Autorisierung je Aufruf** | – | Keine Anwendung vertraut einer anderen; autorisiert wird ausschließlich über einen vollständig geprüften Token, nie über die Sitzung (2.2.5) |
 | **Mandant** | `tenant`, Rolle `mandant_<id>` | Die Datentrennungseinheit. Kein eigener Datensatz, sondern eine Rolle im IAM (2.2.13) |
 | **Mandantenkatalog** | `TenantCatalog`, `platform.tenants` | Feste Liste der Mandanten mit Anzeigename und Reihenfolge, in der Backend-Bibliothek (5.3). Vergibt keine Rechte |
@@ -876,12 +900,12 @@ Die Dokumentation ist deutsch, der Quelltext englisch. Diese Tabelle ist die Br�
 | **Aussteller** | `iss` / `issuer` | Der IAM, der den Token ausgestellt hat |
 | **Vormerkung** | – | Eine gewünschte, noch nicht eingereichte Änderung. Gehört bis zum Einreichen dem Nutzer |
 | **Auftrag** | – | Eine eingereichte Änderung; ab hier gehört sie dem Lauf |
-| **Zeitgesteuerter Lauf** | – | Von außen angestoßene Verarbeitung außerhalb des Requests (8.3) |
-| **Prüfspur / Audit** | – | Nur einfügbarer Nachweis je Modul: wer, wann, welcher Mandant, welcher Satz, welche Aktion (8.4) |
+| **Zeitgesteuerter Lauf** | – | Von der Plattform angestoßene Verarbeitung außerhalb des Requests (8.3) |
+| **Prüfspur / Audit** | – | Nur ergänzbarer Nachweis je Modul: wer, wann, welcher Mandant, welcher Satz, welche Aktion (8.4) |
 | **Zeilenbasierte Zugriffsregeln** | Row Level Security, `app.tenant_id` | Zweite Linie der Mandantentrennung in der Datenbank (E9) |
 | **Datenbasis** | `datenplattform` *(Altname im Code)* | Führende Quelle der Datensätze. Cloudera, über JDBC angebunden, ohne OIDC (3.2) |
 | **Satz / Datensatz** | `record` | Ein Eintrag des Datensatztyps, den ein Modul bedient. Liegt auf der Datenbasis, nie als Kopie im Modul |
 | **IAM** | Keycloak | Identity and Access Management – die einzige Vertrauensinstanz (2.2.6) |
 | **Grundauskünfte** | – | Nutzer, Modul und Abmeldung – was jedes Modul durch die Backend-Bibliothek automatisch bietet (5.3) |
 | **Fehlerformat** | RFC 9457, `problem+json` | Einheitliches Fehlerformat über alle Module (8.5) |
-| **ISB** | – | Informationssicherheitsbeauftragter; prüft die Umsetzung der BSI-Anforderungen (2.4) |
+| **ISB** | – | Informationssicherheitsbeauftragter; prüft die Umsetzung der BSI-Anforderungen (8.6) |

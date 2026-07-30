@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.StringJoiner;
 
 /**
@@ -15,7 +16,7 @@ import java.util.StringJoiner;
  *
  * <p>Nothing here knows it is reached over HTTP: a condition this list does not offer is
  * an {@link IllegalArgumentException}, and turning that into a status code is the web
- * layer's business — see {@code BadConditionMapper}.
+ * layer's business — see {@code InvalidInputMapper}.
  *
  * <p><b>What is bound and what is not.</b> The value a reader types is always a bound
  * parameter. The column and the comparison become SQL, which is why both are whitelists
@@ -56,35 +57,45 @@ public final class Conditions {
     }
 
     /**
-     * How a store spells the two comparisons that are not plain operators, and how it
-     * writes a placeholder. Everything else about the SQL is the same on both.
+     * How a store spells the two comparisons that are not plain operators. Everything else
+     * about the SQL is the same on both.
      */
     public enum Dialect {
         /** Impala, over the platform. */
-        IMPALA("instr", "strright") {
+        IMPALA("strright", "instr"),
+        /** PostgreSQL, both as the light Datenbasis and as the module's own database. */
+        POSTGRES("right", "strpos");
+
+        private final String fromRight;
+        private final String position;
+
+        Dialect(String fromRight, String position) {
+            this.fromRight = fromRight;
+            this.position = position;
+        }
+    }
+
+    /**
+     * How a placeholder is written — a property of the interface the SQL is handed to, not
+     * of the database behind it. The same PostgreSQL takes both: plain JDBC counts
+     * positionally and wants a bare {@code ?}, while Hibernate's native queries want their
+     * parameters numbered.
+     */
+    public enum Parameters {
+        JDBC {
             @Override
-            String placeholder(int index) {
+            String at(int index) {
                 return "?";
             }
         },
-        /** PostgreSQL, the module's own database, through a native query. */
-        POSTGRES("strpos", "right") {
+        NUMBERED {
             @Override
-            String placeholder(int index) {
-                // Hibernate wants its native-query parameters numbered.
+            String at(int index) {
                 return "?" + index;
             }
         };
 
-        private final String position;
-        private final String fromRight;
-
-        Dialect(String position, String fromRight) {
-            this.position = position;
-            this.fromRight = fromRight;
-        }
-
-        abstract String placeholder(int index);
+        abstract String at(int index);
     }
 
     /** A where clause and the values its placeholders stand for, in the order they appear. */
@@ -99,13 +110,13 @@ public final class Conditions {
      * is what the reader asked for, and quietly answering with an unfiltered one is the
      * kind of wrong answer nobody notices.
      */
-    public static List<Condition> parse(List<String> raw, Map<String, String> columns) {
+    public static List<Condition> parse(List<String> raw, Set<String> fields) {
         return raw.stream().map(entry -> {
             String[] parts = entry.split(":", 3);
             if (parts.length < 2) {
                 throw new IllegalArgumentException("malformed condition " + entry);
             }
-            if (!"any".equals(parts[0]) && !columns.containsKey(parts[0])) {
+            if (!"any".equals(parts[0]) && !fields.contains(parts[0])) {
                 throw new IllegalArgumentException("unknown field " + parts[0]);
             }
             return new Condition(parts[0], Operator.of(parts[1]),
@@ -121,9 +132,10 @@ public final class Conditions {
      * @param anyColumns what "all fields" means here
      */
     public static Where where(String tenantColumn, String tenantId, List<Condition> conditions,
-            Map<String, String> columns, List<String> anyColumns, Dialect dialect) {
+            Map<String, String> columns, List<String> anyColumns, Dialect dialect,
+            Parameters parameters) {
         StringBuilder sql = new StringBuilder("where " + tenantColumn + " = "
-                + dialect.placeholder(1));
+                + parameters.at(1));
         List<String> params = new ArrayList<>();
         params.add(tenantId);
         for (Condition condition : conditions) {
@@ -137,7 +149,7 @@ public final class Conditions {
                     : List.of(columns.get(condition.field()));
             StringJoiner alternatives = new StringJoiner(" or ", " and (", ")");
             for (String column : targets) {
-                alternatives.add(predicate(column, condition, params, dialect));
+                alternatives.add(predicate(column, condition, params, dialect, parameters));
             }
             sql.append(alternatives);
         }
@@ -153,7 +165,7 @@ public final class Conditions {
      * at all, and reads the same on both stores.
      */
     private static String predicate(String column, Condition condition, List<String> params,
-            Dialect dialect) {
+            Dialect dialect, Parameters parameters) {
         if (condition.operator() == Operator.SET) {
             return column + " is not null";
         }
@@ -161,7 +173,7 @@ public final class Conditions {
             return column + " is null";
         }
         params.add(condition.value());
-        String first = dialect.placeholder(params.size());
+        String first = parameters.at(params.size());
         return switch (condition.operator()) {
             case CONTAINS -> dialect.position + "(lower(" + column + "), lower(" + first + ")) > 0";
             case STARTS -> dialect.position + "(lower(" + column + "), lower(" + first + ")) = 1";
@@ -170,7 +182,7 @@ public final class Conditions {
             case ENDS -> {
                 params.add(condition.value());
                 yield dialect.fromRight + "(lower(" + column + "), length(" + first + ")) = lower("
-                        + dialect.placeholder(params.size()) + ")";
+                        + parameters.at(params.size()) + ")";
             }
             case EQUALS -> "lower(" + column + ") = lower(" + first + ")";
             default -> throw new IllegalStateException("unhandled operator " + condition.operator());

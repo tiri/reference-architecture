@@ -21,11 +21,11 @@ import {
     TableHeader as AriaTableHeader,
     useTableOptions,
 } from "react-aria-components";
-import { Badge } from "@platform/shared-ui/src/components/base/badges/badges";
-import { Checkbox } from "@platform/shared-ui/src/components/base/checkbox/checkbox";
-import { Dropdown } from "@platform/shared-ui/src/components/base/dropdown/dropdown";
-import { Tooltip, TooltipTrigger } from "@platform/shared-ui/src/components/base/tooltip/tooltip";
-import { cx } from "@platform/shared-ui/src/utils/cx";
+import { Badge } from "../../base/badges/badges";
+import { Checkbox } from "../../base/checkbox/checkbox";
+import { Dropdown } from "../../base/dropdown/dropdown";
+import { Tooltip, TooltipTrigger } from "../../base/tooltip/tooltip";
+import { cx } from "../../../utils/cx";
 
 /**
  * Adapted from Untitled UI, which ships a fixed Edit / Copy link / Delete menu. A row's
@@ -116,14 +116,21 @@ const TableCardHeader = ({ title, badge, description, contentTrailing, className
 
 interface TableRootProps extends AriaTableProps, Omit<ComponentPropsWithRef<"table">, "className" | "slot" | "style"> {
     size?: TableSize;
+    /**
+     * The box around the table, which is a scroll container whether or not anything asked
+     * for one — `overflow-x` alone makes `overflow-y` a scroll container too. That matters
+     * for a sticky header: it sticks to *this* element, so a caller that wants the rows to
+     * scroll under a fixed header has to make this the box that scrolls.
+     */
+    wrapperProps?: ComponentPropsWithRef<"div">;
 }
 
-const TableRoot = ({ className, size = "md", ...props }: TableRootProps) => {
+const TableRoot = ({ className, size = "md", wrapperProps, ...props }: TableRootProps) => {
     const context = useContext(TableContext);
 
     return (
         <TableContext.Provider value={{ size: context?.size ?? size }}>
-            <div className="overflow-x-auto">
+            <div {...wrapperProps} className={cx("overflow-x-auto", wrapperProps?.className)}>
                 <AriaTable className={(state) => cx("w-full overflow-x-hidden", typeof className === "function" ? className(state) : className)} {...props} />
             </div>
         </TableContext.Provider>

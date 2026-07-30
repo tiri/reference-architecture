@@ -9,21 +9,24 @@ Shared frontend library for all platform modules: one look and feel, one auth co
 
 Login and logout are **top-level navigations**, not XHRs: the OIDC redirect chain has to run in the main window. `logout()` posts a form because the session cookie is `SameSite=Lax`, which withholds it from cross-site POSTs. There is **no CSRF token** anywhere in this library — that is the design, not an omission ([8.1](../arch-docs/README.md#8-querschnittliche-konzepte)).
 
-## Consuming (side-by-side checkout)
+## Consuming
 
 ```jsonc
 // app frontend package.json
-"dependencies": { "@platform/shared-ui": "file:../../shared-ui" }
+"dependencies": { "@platform/shared-ui": "^0.1.0" }
 ```
 
-npm symlinks the folder, so lib edits hot-reload in the app's Vite dev server. The lib ships **TypeScript source only** (`exports: ./src/index.ts`) — the consumer's Vite/tsc compiles it. Requirements in the app:
+Publish this package to the organisation's npm registry before consuming it. Configure that
+registry for the `@platform` scope in the consuming application's `.npmrc`. The package
+ships **TypeScript source only** (`exports: ./src/index.ts`) — the consumer's Vite/tsc
+compiles it. Requirements in the app:
 
 1. Peer deps installed: `react`, `react-dom`, `react-aria-components`, `tailwindcss`.
-2. App CSS imports the theme and scans the lib source **via the real relative path** (Tailwind's scanner does not follow the node_modules symlink):
+2. App CSS imports the theme and scans the installed package source:
 
 ```css
 @import "@platform/shared-ui/src/styles/globals.css";
-@source "../../../shared-ui/src";
+@source "../node_modules/@platform/shared-ui/src";
 ```
 
 3. `tsconfig` uses `moduleResolution: "bundler"` and `jsx: "react-jsx"`.
@@ -46,9 +49,16 @@ reload — because the module re-checks the tenant against the token on every ca
 
 ## Development
 
+Installed together with the apps, as one npm workspace — see
+`dev-starter/npm-workspace.sh`. That is also what gives the tree a single copy of React,
+which shared components require.
+
 ```bash
-npm install
+../dev-starter/npm-workspace.sh   # once, from any checkout
 npm run typecheck
 ```
 
-Vendored Untitled UI files are unmodified except that `@/…` imports were rewritten to `@platform/shared-ui/src/…` — keep it that way so upstream updates stay diffable.
+Vendored Untitled UI files are unmodified except that `@/…` imports were rewritten to
+relative paths — keep it that way so upstream updates stay diffable. Relative rather than
+`@platform/shared-ui/src/…`: a package that imports itself by name only resolves where the
+consumer has been told how to map that name, which a published package cannot assume.

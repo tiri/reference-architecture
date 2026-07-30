@@ -1,10 +1,14 @@
 {
   "name": "@platform/shared-ui",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "description": "Shared platform UI: Untitled UI-based design system, app shell, auth hooks, API client. Consumed as TypeScript source via file: dependency.",
+  "description": "Shared platform UI: Untitled UI-based design system, app shell, auth hooks, and API client.",
   "license": "MIT",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE-untitledui"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./src/*": "./src/*"

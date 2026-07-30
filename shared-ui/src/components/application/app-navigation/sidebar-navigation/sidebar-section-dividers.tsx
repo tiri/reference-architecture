@@ -1,12 +1,12 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { MobileNavigationHeader } from "@platform/shared-ui/src/components/application/app-navigation/base-components/mobile-header";
-import { NavItemBase } from "@platform/shared-ui/src/components/application/app-navigation/base-components/nav-item";
-import { NavList } from "@platform/shared-ui/src/components/application/app-navigation/base-components/nav-list";
+import { MobileNavigationHeader } from "../base-components/mobile-header";
+import { NavItemBase } from "../base-components/nav-item";
+import { NavList } from "../base-components/nav-list";
 import type {
   NavItemDividerType, NavItemType,
-} from "@platform/shared-ui/src/components/application/app-navigation/config";
+} from "../config";
 
 /**
  * Untitled UI's sidebar navigation with section dividers, adapted in the same two places

@@ -10,8 +10,10 @@ import jakarta.persistence.Query;
 import jakarta.transaction.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Reading the queue: one page of a tenant's requests, asked exactly as the platform's
@@ -31,11 +33,49 @@ import java.util.Map;
 public class ChangeQuery {
 
     /**
-     * The columns of the queue a reader may sort or filter by, under the names the
-     * frontend uses. A whitelist for the same reason as on the platform side: these become
-     * SQL, the reader's values never do.
+     * What is still outstanding for the supplied records, keyed by record id.
+     *
+     * <p>Asked by the record list, which shows the platform's name and the one the user has
+     * requested in the same row. It stays here because it is a question about the queue, and
+     * the queue's tenant binding and states are this package's to know — the alternative is
+     * the record list writing its own query over another feature's table, which is how two
+     * places end up disagreeing about what "pending" means.
      */
-    public static final Map<String, String> FILTERABLE = Map.of(
+    @Transactional
+    public Map<String, ChangeRequest> pendingFor(String tenantId, List<String> recordIds) {
+        if (recordIds.isEmpty()) {
+            return Map.of();
+        }
+        tenantBinding.bind(tenantId);
+        Map<String, ChangeRequest> pending = new HashMap<>();
+        ChangeRequest.<ChangeRequest>list(
+                "tenantId = ?1 and status in ?2 and recordId in ?3 order by requestedAt asc",
+                tenantId, ChangeStatus.PENDING, recordIds)
+                .forEach(request -> pending.put(request.recordId, request));
+        return pending;
+    }
+
+    /** How the tenant's requests are distributed across their lifecycle states. */
+    @Transactional
+    public Counts counts(String tenantId) {
+        tenantBinding.bind(tenantId);
+        return new Counts(
+                count(tenantId, ChangeStatus.DRAFT),
+                count(tenantId, ChangeStatus.OPEN),
+                count(tenantId, ChangeStatus.APPLIED),
+                count(tenantId, ChangeStatus.FAILED));
+    }
+
+    /**
+     * What a reader may sort or filter the queue by, under the names the frontend uses. A
+     * whitelist for the same reason as on the platform side: these reach SQL, the reader's
+     * values never do.
+     */
+    public static final Set<String> FIELDS =
+            Set.of("recordId", "kind", "newValue", "status", "requestedAt");
+
+    /** Those names as columns. The schema is this class's business and nobody else's. */
+    private static final Map<String, String> COLUMNS = Map.of(
             "recordId", "record_id",
             "kind", "kind",
             "newValue", "new_value",
@@ -61,7 +101,7 @@ public class ChangeQuery {
     public Page search(String tenantId, List<Condition> conditions, String sortBy,
             boolean ascending, Cursor after, int size) {
         tenantBinding.bind(tenantId);
-        String column = FILTERABLE.getOrDefault(sortBy, "requested_at");
+        String column = COLUMNS.getOrDefault(sortBy, "requested_at");
         // Every sort ends in the primary key, or paging repeats and skips rows. Null sorts
         // as the empty string: a column with gaps still needs one place for every row.
         String key = "coalesce(cast(" + column + " as text), '')";
@@ -69,7 +109,8 @@ public class ChangeQuery {
         String comparison = ascending ? ">" : "<";
 
         Conditions.Where where = Conditions.where("tenant_id", tenantId, conditions,
-                FILTERABLE, ANY_COLUMNS, Conditions.Dialect.POSTGRES);
+                COLUMNS, ANY_COLUMNS, Conditions.Dialect.POSTGRES,
+                Conditions.Parameters.NUMBERED);
         List<Object> params = new ArrayList<>(where.params());
 
         String seek = "";
@@ -118,6 +159,10 @@ public class ChangeQuery {
         return query;
     }
 
+    private static long count(String tenantId, ChangeStatus status) {
+        return ChangeRequest.count("tenantId = ?1 and status = ?2", tenantId, status);
+    }
+
     /** Where a page ended: the sort key of its last row, and that row's id to break ties. */
     public record Cursor(String key, String id) {
     }
@@ -126,12 +171,23 @@ public class ChangeQuery {
     public record Page(List<Entry> rows, Long total, Cursor next, int size) {
     }
 
-    /** A request as the queue holds it. */
-    public record Entry(Long id, String recordId, String kind, String newValue, String status,
+    public record Counts(long draft, long open, long applied, long failed) {
+    }
+
+    /**
+     * A request as the queue holds it, and as the wire carries it.
+     *
+     * <p>Not mapped to a separate view: this is a projection written for this one query, so
+     * a view beside it would be the same eight fields copied across, with nothing to decide
+     * on the way. The record list is the case that does need one — a row there is the
+     * platform's record and this queue's request put together.
+     */
+    public record Entry(Long id, String recordId, ChangeKind kind, String newValue, String status,
             Instant requestedAt, Instant appliedAt, String lastError) {
 
         static Entry of(Object[] row) {
-            return new Entry(((Number) row[0]).longValue(), (String) row[1], (String) row[2],
+            return new Entry(((Number) row[0]).longValue(), (String) row[1],
+                    ChangeKind.of((String) row[2]),
                     (String) row[3], (String) row[4], instant(row[5]), instant(row[6]),
                     (String) row[7]);
         }

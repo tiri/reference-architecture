@@ -1,6 +1,6 @@
 "use client";
 
-import { cx } from "@platform/shared-ui/src/utils/cx";
+import { cx } from "../../../../utils/cx";
 
 const sizes = {
     xs: "size-2.5",

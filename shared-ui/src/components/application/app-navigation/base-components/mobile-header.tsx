@@ -9,7 +9,7 @@ import {
     Modal as AriaModal,
     ModalOverlay as AriaModalOverlay,
 } from "react-aria-components";
-import { cx } from "@platform/shared-ui/src/utils/cx";
+import { cx } from "../../../../utils/cx";
 
 /**
  * Adapted from Untitled UI: the logo is a prop, because each module wears its own mark

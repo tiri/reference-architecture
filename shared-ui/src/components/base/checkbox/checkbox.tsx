@@ -2,7 +2,7 @@
 
 import type { ReactNode, Ref } from "react";
 import { Checkbox as AriaCheckbox, type CheckboxProps as AriaCheckboxProps } from "react-aria-components";
-import { cx } from "@platform/shared-ui/src/utils/cx";
+import { cx } from "../../../utils/cx";
 
 export interface CheckboxBaseProps {
     size?: "sm" | "md";

@@ -1,7 +1,10 @@
 package com.example.demo.job;
 
+import com.example.demo.audit.AuditEvent;
 import com.example.demo.audit.AuditService;
 import com.example.demo.change.ChangeRequest;
+import com.example.demo.change.ChangeStatus;
+import com.example.demo.change.RequestedChange;
 import com.example.demo.records.RecordWriter;
 import com.example.demo.tenant.TenantBinding;
 import io.quarkus.logging.Log;
@@ -58,9 +61,10 @@ public class ChangeBatch {
         tenantBinding.bind(tenantId);
         @SuppressWarnings("unchecked")
         List<Long> claimed = entityManager.createNativeQuery(
-                        "select id from change_request where status = 'OPEN' "
-                                + "order by requested_at for update skip locked limit ?1")
-                .setParameter(1, chunkSize)
+                        "select id from change_request where status = ?1 "
+                                + "order by requested_at for update skip locked limit ?2")
+                .setParameter(1, ChangeStatus.OPEN.name())
+                .setParameter(2, chunkSize)
                 .getResultList()
                 .stream()
                 .map(id -> ((Number) id).longValue())
@@ -71,22 +75,23 @@ public class ChangeBatch {
         for (Long id : claimed) {
             ChangeRequest request = ChangeRequest.findById(id);
             try {
-                // One kind of change today. The check stays: `kind` is a column, and a row
-                // written by an older or newer version of this module must not be applied
-                // as though it meant a rename.
-                if (!ChangeRequest.KIND_RENAME.equals(request.kind)) {
-                    throw new IllegalStateException("unknown kind " + request.kind);
+                // One kind of change today, and still a switch over the enum: it does not
+                // compile once a second kind exists, which is the only reliable way for a
+                // run at three in the morning not to apply an unknown kind as a rename.
+                switch (request.kind) {
+                    case RENAME -> records.rename(tenantId, request.recordId, request.newValue);
                 }
-                records.rename(tenantId, request.recordId, request.newValue);
-                request.status = ChangeRequest.APPLIED;
+                request.status = ChangeStatus.APPLIED;
                 request.appliedAt = Instant.now();
-                audit.record("batch", tenantId, "record", request.recordId, "applied", request.kind);
+                audit.record(new AuditEvent("batch", tenantId, "record", request.recordId,
+                        "applied", request.kind.name()));
             }
             catch (RuntimeException failure) {
                 // One bad record must not stop the rest of the run.
-                request.status = ChangeRequest.FAILED;
+                request.status = ChangeStatus.FAILED;
                 request.lastError = failure.getClass().getSimpleName() + ": " + failure.getMessage();
-                audit.record("batch", tenantId, "record", request.recordId, "failed", request.kind);
+                audit.record(new AuditEvent("batch", tenantId, "record", request.recordId,
+                        "failed", request.kind.name()));
                 Log.warnf("change request %d failed: %s", id, failure.toString());
             }
         }

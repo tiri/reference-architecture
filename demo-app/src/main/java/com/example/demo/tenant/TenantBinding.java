@@ -11,6 +11,13 @@ import jakarta.persistence.EntityManager;
  * <b>current transaction</b>. Binding it to the connection instead would be the most
  * dangerous variant of this mistake: with connection pooling the value would stick to
  * the connection and the next user would inherit it (risk 11.3).
+ *
+ * <p><b>Why this is not in shared-bff.</b> Every module with a tenant-scoped database needs
+ * exactly these four lines, so the library looks like the place for them — but the library
+ * has no persistence dependency, and moving this there would put Hibernate and a datasource
+ * into every module that includes it, including the ones that have no database at all. Four
+ * duplicated lines are the cheaper of the two mistakes. If a second module ever needs it,
+ * what belongs in the library is the tenant contract, not an {@code EntityManager}.
  */
 @ApplicationScoped
 public class TenantBinding {

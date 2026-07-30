@@ -2,7 +2,7 @@
 
 import { type FC, type ReactNode, useState } from "react";
 import { User01 } from "@untitledui/icons";
-import { cx } from "@platform/shared-ui/src/utils/cx";
+import { cx } from "../../../utils/cx";
 import { AvatarOnlineIndicator, VerifiedTick } from "./base-components";
 import { AvatarCount } from "./base-components/avatar-count";
 

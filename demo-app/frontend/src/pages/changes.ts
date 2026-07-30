@@ -40,6 +40,7 @@ export const changeColors: Record<string, BadgeColor<"pill-color">> = {
   FAILED: "error",
 };
 
+/** The kinds of change, as the API names them. */
 export const kindLabels: Record<string, string> = {
-  rename: "Umbenennung",
+  RENAME: "Umbenennung",
 };

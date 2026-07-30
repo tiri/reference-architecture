@@ -1,6 +1,6 @@
-package com.example.demo;
+package com.example.demo.dashboard;
 
-import com.example.demo.change.ChangeRequests;
+import com.example.demo.change.ChangeQuery;
 import com.example.demo.records.RecordCatalog;
 import com.example.platform.bff.user.PlatformUser;
 import io.quarkus.security.Authenticated;
@@ -18,6 +18,9 @@ import jakarta.ws.rs.core.MediaType;
  * <p>One endpoint rather than several, because a dashboard asks all of it at once and a
  * page of small independent requests is how a dashboard becomes the slowest screen in an
  * application.
+ *
+ * <p>In its own package like every other feature. It was the only class left in the root,
+ * where a reader looking for the module's structure finds it first and learns nothing.
  */
 @Path("/api/t/{tenant}/dashboard")
 @Authenticated
@@ -27,7 +30,7 @@ public class DashboardResource {
     RecordCatalog records;
 
     @Inject
-    ChangeRequests changes;
+    ChangeQuery changes;
 
     @Inject
     PlatformUser user;
@@ -37,7 +40,7 @@ public class DashboardResource {
     public Dashboard dashboard(@PathParam("tenant") String tenant) {
         String tenantId = user.requireTenant(tenant);
         RecordCatalog.Stats stats = records.stats(tenantId);
-        ChangeRequests.Counts counts = changes.counts(tenantId);
+        ChangeQuery.Counts counts = changes.counts(tenantId);
         return new Dashboard(stats.records(), stats.changed(), stats.categories(),
                 counts.draft(), counts.open(), counts.applied(), counts.failed());
     }

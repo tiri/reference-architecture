@@ -1,10 +1,11 @@
-package com.example.demo.cloudera;
+package com.example.demo.records;
 
+import com.example.demo.change.ChangeKind;
+import com.example.demo.change.ChangeQuery;
 import com.example.demo.change.ChangeRequest;
-import com.example.demo.change.ChangeRequests;
 import com.example.demo.query.Conditions;
 import com.example.demo.query.Cursors;
-import com.example.demo.records.RecordCatalog;
+import com.example.demo.query.PageView;
 import com.example.platform.bff.user.PlatformUser;
 import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
@@ -24,6 +25,11 @@ import java.util.Map;
  * The module keeps no copy of them, so there is no second list and no way for the two to
  * disagree.
  *
+ * <p>Beside the port it serves, not beside an adapter: this class asks a
+ * {@link RecordCatalog} and never learns which system answered. It sat in the {@code
+ * cloudera} package while Impala was the only possibility, and the name outlived the
+ * dependency.
+ *
  * <p>The tenant is part of the path, so every response has its own cache key and no cache
  * has to reason about cookies. It is still checked against the token on every request.
  */
@@ -35,14 +41,14 @@ public class RecordResource {
     RecordCatalog records;
 
     @Inject
-    ChangeRequests changes;
+    ChangeQuery changes;
 
     @Inject
     PlatformUser user;
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
-    public Page records(@PathParam("tenant") String tenant,
+    public PageView<RecordView> records(@PathParam("tenant") String tenant,
             @QueryParam("f") List<String> filters,
             @QueryParam("sort") @DefaultValue("recordId") String sort,
             @QueryParam("dir") @DefaultValue("asc") String direction,
@@ -50,7 +56,7 @@ public class RecordResource {
             @QueryParam("size") @DefaultValue("10") int size) {
         String tenantId = user.requireTenant(tenant);
         RecordCatalog.Page found = records.search(tenantId,
-                Conditions.parse(filters, RecordCatalog.FILTERABLE), sort,
+                Conditions.parse(filters, RecordCatalog.FIELDS), sort,
                 "asc".equalsIgnoreCase(direction),
                 Cursors.decode(after, RecordCatalog.Cursor::new), size);
 
@@ -64,18 +70,17 @@ public class RecordResource {
                 .map(record -> RecordView.of(record, pending.get(record.id())))
                 .toList();
         RecordCatalog.Cursor next = found.next();
-        return new Page(rows, found.total(),
+        return new PageView<>(rows, found.total(),
                 next == null ? null : Cursors.encode(next.key(), next.id()), found.size());
-    }
-
-    /** {@code total} only on the first page of a walk — see {@link RecordCatalog.Page}. */
-    public record Page(List<RecordView> rows, Long total, String next, int size) {
     }
 
     /**
      * A record as the platform holds it, plus the change the user is still waiting for.
      * The name stays the platform's — the requested one is offered beside it, so the list
      * shows what is true and what was asked for without confusing the two.
+     *
+     * <p>A view rather than the catalogue's record, because a row here is two sources put
+     * together: one the module reads, one it owns.
      */
     public record RecordView(String id, String name, String category, Instant changedAt,
             Pending pending) {
@@ -84,10 +89,11 @@ public class RecordResource {
             return new RecordView(record.id(), record.name(), record.category(),
                     record.changedAt(),
                     change == null ? null
-                            : new Pending(change.id, change.kind, change.newValue, change.status));
+                            : new Pending(change.id, change.kind, change.newValue,
+                                    change.status.name()));
         }
     }
 
-    public record Pending(Long id, String kind, String newValue, String status) {
+    public record Pending(Long id, ChangeKind kind, String newValue, String status) {
     }
 }

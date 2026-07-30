@@ -6,8 +6,6 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@platform/shared-ui": ["../../shared-ui/src/index.ts"],
-      "@platform/shared-ui/src/*": ["../../shared-ui/src/*"],
       // shared-ui is compiled from source, so its files resolve React's types next to
       // themselves — a second physical copy of the same version. TypeScript treats the
       // two as unrelated, and every react-aria ref fails to typecheck against itself.

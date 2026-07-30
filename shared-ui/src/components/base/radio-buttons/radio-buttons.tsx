@@ -7,7 +7,7 @@ import {
     type RadioGroupProps as AriaRadioGroupProps,
     type RadioProps as AriaRadioProps,
 } from "react-aria-components";
-import { cx } from "@platform/shared-ui/src/utils/cx";
+import { cx } from "../../../utils/cx";
 
 export interface RadioGroupContextType {
     size?: "sm" | "md";

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SortDescriptor } from "react-aria-components";
-import { ApiError } from "@platform/shared-ui/src/api/problem";
-import { apiFetch } from "@platform/shared-ui/src/api/apiFetch";
-import { useTenant } from "@platform/shared-ui/src/auth/AuthProvider";
+import { ApiError } from "../../../api/problem";
+import { apiFetch } from "../../../api/apiFetch";
+import { useTenant } from "../../../auth/AuthProvider";
 import {
   serializeConditions, usableConditions,
-} from "@platform/shared-ui/src/components/application/table/table-filter";
-import type { Condition } from "@platform/shared-ui/src/components/application/table/table-filter";
+} from "./table-filter";
+import type { Condition } from "./table-filter";
 
 /**
  * What a paged list answers, on every endpoint of this platform.
@@ -173,10 +173,30 @@ TableQueryOptions) {
     total,
     loading,
     error,
-    /** Throw the answers away and ask again — after a write, when they are stale. */
+    /** Throw the answers away and ask again — after a write whose result is not known. */
     reload: () => {
       cache.current.clear();
       setRevision((n) => n + 1);
+    },
+
+    /**
+     * Change rows in place, without asking the list again.
+     *
+     * <p>For a write whose outcome is already known: the caller asked for one thing, it
+     * was accepted, and what the row now looks like follows from that. Re-reading the page
+     * to learn it costs a query — seconds of one, against the platform — and the reader
+     * watches their own table blink for an answer that was never in doubt.
+     *
+     * <p>The shown page and the cached copy of it are both patched, so leaving the page
+     * and coming back does not resurrect the row as it was before the edit.
+     */
+    patch: (matches: (row: T) => boolean, change: (row: T) => T) => {
+      const apply = (rows: T[]) => rows.map((row) => (matches(row) ? change(row) : row));
+      setData((shown) => (shown ? { ...shown, rows: apply(shown.rows) } : shown));
+      const entry = cache.current.get(trail[page] ?? "");
+      if (entry) {
+        entry.page = entry.page.then((fetched) => ({ ...fetched, rows: apply(fetched.rows) }));
+      }
     },
 
     conditions: applied,

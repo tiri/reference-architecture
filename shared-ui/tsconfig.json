@@ -5,9 +5,6 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "baseUrl": ".",
-    "paths": {
-      "@platform/shared-ui/src/*": ["./src/*"]
-    },
     "jsx": "react-jsx",
     "strict": true,
     "noEmit": true,

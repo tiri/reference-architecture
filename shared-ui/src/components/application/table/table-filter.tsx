@@ -1,10 +1,10 @@
 import { Fragment } from "react";
 import { FilterLines, Plus, Trash01, X } from "@untitledui/icons";
 import { Dialog, DialogTrigger, Popover } from "react-aria-components";
-import { Badge } from "@platform/shared-ui/src/components/base/badges/badges";
-import { Button } from "@platform/shared-ui/src/components/base/buttons/button";
-import { Input } from "@platform/shared-ui/src/components/base/input/input";
-import { Select } from "@platform/shared-ui/src/components/base/select/select";
+import { Badge } from "../../base/badges/badges";
+import { Button } from "../../base/buttons/button";
+import { Input } from "../../base/input/input";
+import { Select } from "../../base/select/select";
 
 /** One condition, in the shape the API carries it: field, comparison, value. */
 export interface Condition {

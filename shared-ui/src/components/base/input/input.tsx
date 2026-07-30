@@ -4,10 +4,10 @@ import { type ComponentType, type HTMLAttributes, type ReactNode, type Ref, crea
 import { Eye, EyeOff, HelpCircle, InfoCircle } from "@untitledui/icons";
 import type { InputProps as AriaInputProps, TextFieldProps as AriaTextFieldProps } from "react-aria-components";
 import { Button as AriaButton, Group as AriaGroup, Input as AriaInput, TextField as AriaTextField } from "react-aria-components";
-import { HintText } from "@platform/shared-ui/src/components/base/input/hint-text";
-import { Label } from "@platform/shared-ui/src/components/base/input/label";
-import { Tooltip, TooltipTrigger } from "@platform/shared-ui/src/components/base/tooltip/tooltip";
-import { cx, sortCx } from "@platform/shared-ui/src/utils/cx";
+import { HintText } from "./hint-text";
+import { Label } from "./label";
+import { Tooltip, TooltipTrigger } from "../tooltip/tooltip";
+import { cx, sortCx } from "../../../utils/cx";
 
 export interface InputBaseProps extends Omit<AriaInputProps, "size"> {
     /** Tooltip message on hover. */

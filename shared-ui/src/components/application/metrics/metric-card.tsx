@@ -1,7 +1,7 @@
 import type { FC } from "react";
 import { ArrowRight } from "@untitledui/icons";
 import { Link as AriaLink } from "react-aria-components";
-import { cx } from "@platform/shared-ui/src/utils/cx";
+import { cx } from "../../../utils/cx";
 
 /**
  * The tones a figure can carry, named as the badges name them so a dashboard and a table

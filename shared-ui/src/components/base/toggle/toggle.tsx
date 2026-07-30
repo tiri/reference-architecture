@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import type { SwitchProps as AriaSwitchProps } from "react-aria-components";
 import { Switch as AriaSwitch } from "react-aria-components";
-import { cx } from "@platform/shared-ui/src/utils/cx";
+import { cx } from "../../../utils/cx";
 
 interface ToggleBaseProps {
     size?: "sm" | "md";

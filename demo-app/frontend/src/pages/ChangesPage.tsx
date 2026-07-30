@@ -31,12 +31,12 @@ const fields: FilterField[] = [
 ];
 
 const columns: DataColumn[] = [
-  { id: "recordId", label: "Datensatz", isRowHeader: true, allowsSorting: true, placeholder: "w-24" },
-  { id: "kind", label: "Art", allowsSorting: true, placeholder: "w-24" },
-  { id: "newValue", label: "Neuer Wert", allowsSorting: true, className: "w-full", placeholder: "w-56" },
-  { id: "status", label: "Status", allowsSorting: true, placeholder: "w-20" },
-  { id: "requestedAt", label: "Beantragt", allowsSorting: true, placeholder: "w-28" },
-  { id: "actions", label: "", placeholder: "w-6" },
+  { id: "recordId", label: "Datensatz", isRowHeader: true, allowsSorting: true, width: 121, placeholder: "w-24" },
+  { id: "kind", label: "Art", allowsSorting: true, width: 137, placeholder: "w-24" },
+  { id: "newValue", label: "Neuer Wert", allowsSorting: true, width: "1fr", placeholder: "w-56" },
+  { id: "status", label: "Status", allowsSorting: true, width: 116, placeholder: "w-20" },
+  { id: "requestedAt", label: "Beantragt", allowsSorting: true, width: 160, placeholder: "w-28" },
+  { id: "actions", label: "", width: 60, placeholder: "w-6" },
 ];
 
 /**
@@ -86,7 +86,7 @@ export function ChangesPage({ title }: { title: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
       {notice && (
         <p className="rounded-lg bg-error-primary px-4 py-3 text-sm text-error-primary ring-1 ring-error">
           {notice}
@@ -139,14 +139,20 @@ export function ChangesPage({ title }: { title: string }) {
           />
         }
         footer={
-          <PaginationCardMinimal
-            align="center"
-            page={changes.page + 1}
-            total={changes.lastPage + 1}
-            pageSize={changes.size}
-            onPageChange={changes.onPageChange}
-            onPageSizeChange={changes.onPageSizeChange}
-          />
+          // Untitled UI's minimal pagination card — forward, back, and how many rows a
+          // page holds. Not the one with page numbers: a cursor cannot land on page 137
+          // without walking there, and pretending otherwise would mean the offset query
+          // this was built to avoid.
+          changes.rows.length > 0 || changes.page > 0 ? (
+            <PaginationCardMinimal
+              align="center"
+              page={changes.page + 1}
+              total={changes.lastPage + 1}
+              pageSize={changes.size}
+              onPageChange={changes.onPageChange}
+              onPageSizeChange={changes.onPageSizeChange}
+            />
+          ) : undefined
         }
       >
         {(change: Change) => (

@@ -2,10 +2,12 @@ package com.example.demo.cloudera;
 
 import com.example.demo.query.Conditions;
 import com.example.demo.query.Conditions.Condition;
+import com.example.demo.records.DatenbasisException;
 import com.example.demo.records.RecordCatalog;
 import com.example.demo.records.RecordWriter;
 import io.quarkus.agroal.DataSource;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Typed;
 import jakarta.inject.Inject;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -47,6 +49,7 @@ import java.util.Map;
  * There are no transactions either, which is why this datasource is not enlisted.
  */
 @ApplicationScoped
+@Typed(Cloudera.class)
 public class Cloudera implements RecordCatalog, RecordWriter {
 
     /**
@@ -56,6 +59,13 @@ public class Cloudera implements RecordCatalog, RecordWriter {
      */
     /** What "alle Felder" means: the columns a reader would think of as the record's text. */
     private static final List<String> ANY_COLUMNS = List.of("id", "name", "category");
+
+    /** The port's field names as columns of this schema — see {@link RecordCatalog#FIELDS}. */
+    private static final Map<String, String> COLUMNS = Map.of(
+            "recordId", "id",
+            "name", "name",
+            "category", "category",
+            "changedAt", "changed_at");
 
     private static final int MAX_PAGE_SIZE = 100;
 
@@ -83,7 +93,7 @@ public class Cloudera implements RecordCatalog, RecordWriter {
             }
         }
         catch (SQLException failure) {
-            throw new ClouderaException("reading statistics for tenant " + tenantId, failure);
+            throw new DatenbasisException("reading statistics for tenant " + tenantId, failure);
         }
     }
 
@@ -103,7 +113,7 @@ public class Cloudera implements RecordCatalog, RecordWriter {
     @Override
     public Page search(String tenantId, List<Condition> conditions, String sortBy,
             boolean ascending, Cursor after, int size) {
-        String column = FILTERABLE.getOrDefault(sortBy, "id");
+        String column = COLUMNS.getOrDefault(sortBy, "id");
         // The sort key must be a total order or paging repeats and skips rows, so every
         // sort ends in the primary key. Null sorts as the empty string — a column with
         // gaps still has to have exactly one place for every row.
@@ -114,7 +124,8 @@ public class Cloudera implements RecordCatalog, RecordWriter {
         int safeSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
 
         Conditions.Where where = Conditions.where("tenant_id", tenantId, conditions,
-                RecordCatalog.FILTERABLE, ANY_COLUMNS, Conditions.Dialect.IMPALA);
+                COLUMNS, ANY_COLUMNS, Conditions.Dialect.IMPALA,
+                Conditions.Parameters.JDBC);
         String filter = where.sql();
         String seek = after == null ? ""
                 : byKeyAlone
@@ -171,7 +182,7 @@ public class Cloudera implements RecordCatalog, RecordWriter {
             return new Page(rows, total, next, safeSize);
         }
         catch (SQLException failure) {
-            throw new ClouderaException("reading records for tenant " + tenantId, failure);
+            throw new DatenbasisException("reading records for tenant " + tenantId, failure);
         }
     }
 
@@ -213,7 +224,7 @@ public class Cloudera implements RecordCatalog, RecordWriter {
     private void update(String sql, String tenantId, String recordId, String value) {
         try (Connection connection = dataSource.getConnection()) {
             if (!exists(connection, tenantId, recordId)) {
-                throw new ClouderaException(
+                throw new DatenbasisException(
                         "record " + recordId + " not found for tenant " + tenantId, null);
             }
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -227,7 +238,7 @@ public class Cloudera implements RecordCatalog, RecordWriter {
             }
         }
         catch (SQLException failure) {
-            throw new ClouderaException("writing record " + recordId + " failed", failure);
+            throw new DatenbasisException("writing record " + recordId + " failed", failure);
         }
     }
 
@@ -240,12 +251,6 @@ public class Cloudera implements RecordCatalog, RecordWriter {
             try (ResultSet found = statement.executeQuery()) {
                 return found.next();
             }
-        }
-    }
-
-    public static class ClouderaException extends RuntimeException {
-        public ClouderaException(String message, Throwable cause) {
-            super(message, cause);
         }
     }
 }

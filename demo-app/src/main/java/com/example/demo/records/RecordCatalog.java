@@ -3,7 +3,7 @@ package com.example.demo.records;
 import com.example.demo.query.Conditions.Condition;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 /**
  * The records of the Datenbasis, as this module needs to read them.
@@ -20,15 +20,15 @@ import java.util.Map;
 public interface RecordCatalog {
 
     /**
-     * The fields a reader may sort or filter by, by the name the frontend uses, mapped to
-     * the column behind it. A whitelist: a column name becomes SQL, so it can only ever be
-     * one of these.
+     * The fields a reader may sort or filter by, under the names the frontend uses. A
+     * whitelist: a field name reaches SQL, so it can only ever be one of these.
+     *
+     * <p>Names only. Which column each one is depends on the store, so the mapping belongs
+     * to the adapter — a port that named columns would be describing one schema, and the
+     * second store would have to adopt the first one's spelling to fit an interface it is
+     * supposed to be independent of.
      */
-    Map<String, String> FILTERABLE = Map.of(
-            "recordId", "id",
-            "name", "name",
-            "category", "category",
-            "changedAt", "changed_at");
+    Set<String> FIELDS = Set.of("recordId", "name", "category", "changedAt");
 
     /** What the catalogue holds for this tenant. */
     Stats stats(String tenantId);

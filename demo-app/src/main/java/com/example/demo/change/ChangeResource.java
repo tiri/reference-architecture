@@ -2,6 +2,7 @@ package com.example.demo.change;
 
 import com.example.demo.query.Conditions;
 import com.example.demo.query.Cursors;
+import com.example.demo.query.PageView;
 import com.example.platform.bff.user.PlatformUser;
 import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
@@ -42,23 +43,19 @@ public class ChangeResource {
      */
     @GET
     @Produces(MediaType.APPLICATION_JSON)
-    public Page changes(@PathParam("tenant") String tenant,
+    public PageView<ChangeQuery.Entry> changes(@PathParam("tenant") String tenant,
             @QueryParam("f") List<String> conditions,
             @QueryParam("sort") @DefaultValue("requestedAt") String sort,
             @QueryParam("dir") @DefaultValue("desc") String direction,
             @QueryParam("after") String after,
             @QueryParam("size") @DefaultValue("50") int size) {
         ChangeQuery.Page found = queue.search(user.requireTenant(tenant),
-                Conditions.parse(conditions, ChangeQuery.FILTERABLE), sort,
+                Conditions.parse(conditions, ChangeQuery.FIELDS), sort,
                 "asc".equalsIgnoreCase(direction), Cursors.decode(after, ChangeQuery.Cursor::new),
                 size);
         ChangeQuery.Cursor next = found.next();
-        return new Page(found.rows(), found.total(),
+        return new PageView<>(found.rows(), found.total(),
                 next == null ? null : Cursors.encode(next.key(), next.id()), found.size());
-    }
-
-    /** {@code total} only on the first page of a walk. */
-    public record Page(List<ChangeQuery.Entry> rows, Long total, String next, int size) {
     }
 
     /**
@@ -69,17 +66,19 @@ public class ChangeResource {
     @GET
     @Path("/counts")
     @Produces(MediaType.APPLICATION_JSON)
-    public ChangeRequests.Counts counts(@PathParam("tenant") String tenant) {
-        return requests.counts(user.requireTenant(tenant));
+    public ChangeQuery.Counts counts(@PathParam("tenant") String tenant) {
+        return queue.counts(user.requireTenant(tenant));
     }
 
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response request(@PathParam("tenant") String tenant, ChangeRequestBody body) {
+        if (body == null) {
+            throw new IllegalArgumentException("Änderungsantrag fehlt");
+        }
         String tenantId = user.requireTenant(tenant);
-        Long id = requests.request(tenantId, body.recordId(), body.kind(), body.newValue(),
-                user.subject());
+        Long id = requests.request(tenantId, body.toRequestedChange(), user.subject());
         return Response.accepted(new Accepted(id, 1)).build();
     }
 
@@ -104,6 +103,10 @@ public class ChangeResource {
     }
 
     public record ChangeRequestBody(String recordId, String kind, String newValue) {
+
+        RequestedChange toRequestedChange() {
+            return new RequestedChange(recordId, ChangeKind.of(kind), newValue);
+        }
     }
 
     public record Accepted(Long id, int count) {

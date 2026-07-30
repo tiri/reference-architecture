@@ -13,16 +13,17 @@ import java.time.Instant;
 public class AuditService {
 
     @Transactional(Transactional.TxType.MANDATORY)
-    public void record(String actor, String tenantId, String recordType, String recordId,
-            String action, String detail) {
+    public void record(AuditEvent event) {
         AuditEntry entry = new AuditEntry();
+        // The one thing the caller does not supply: when. Read here so every entry is
+        // stamped by the same clock, and nobody can pass a time of their choosing.
         entry.occurredAt = Instant.now();
-        entry.actor = actor;
-        entry.tenantId = tenantId;
-        entry.recordType = recordType;
-        entry.recordId = recordId;
-        entry.action = action;
-        entry.detail = detail;
+        entry.actor = event.actor();
+        entry.tenantId = event.tenantId();
+        entry.recordType = event.recordType();
+        entry.recordId = event.recordId();
+        entry.action = event.action();
+        entry.detail = event.detail();
         entry.persist();
     }
 }

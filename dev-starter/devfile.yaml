@@ -4,7 +4,7 @@ metadata:
   displayName: Datenportal — Plattform
   description: >-
     Cloud-Entwicklungsumgebung für die gesamte Plattform: beide geteilten Bibliotheken,
-    das Portal, das Demo-Modul sowie IAM, Modul-Datenbank und die Datenplattform (Impala).
+    das Portal, das Demo-Modul sowie IAM, Modul-Datenbank und die Datenbasis (Impala über Kudu).
   version: 0.1.0
   language: Java
   projectType: Quarkus
@@ -16,7 +16,9 @@ metadata:
 
 # Jede Anwendung und jede Bibliothek ist ein eigenes Repository (Bausteinsicht 5.2), also
 # klont der Arbeitsbereich sie alle nebeneinander — genau wie lokal, wo `shared-ui` über
-# eine `file:`-Abhängigkeit und `shared-bff` über das lokale Maven-Repository gefunden wird.
+# einen npm-Arbeitsbereich (dev-starter/npm-workspace.sh) und `shared-bff` über das lokale
+# Maven-Repository gefunden wird. Die Module fordern die Bibliothek unter ihrer Version an,
+# nicht über einen Pfad: derselbe Eintrag trägt später auch gegen eine Registry.
 #
 # ANPASSEN: Die Remotes zeigen auf Platzhalter. Vor dem ersten Einsatz auf die echten
 # Repository-Adressen und den gewünschten Zweig ändern.
@@ -165,27 +167,14 @@ components:
           cp /projects/dev-starter/postgres/init/*.sql /docker-entrypoint-initdb.d/ 2>/dev/null;
           exec docker-entrypoint.sh postgres
 
-  # ---------------------------------------------------------------- Datenplattform
-  # Apache Impala. Eine Abfrage-Maschine ohne eigenen Tabellenkatalog, deshalb sind es
-  # vier Container: Metastore, Impalas Statestore und Katalog, der Daemon selbst – und
-  # Kudu darunter, weil nur dort einzelne Zeilen änderbar sind.
+  # ---------------------------------------------------------------- Datenbasis
+  # Kudu, weil nur dort einzelne Zeilen änderbar sind, und Impala darüber. Impala ist
+  # eine Abfrage-Maschine ohne eigenen Tabellenkatalog und braucht deshalb Metastore,
+  # Statestore, Katalog und Daemon — hier alle in einem Abbild, das das Kudu-Projekt für
+  # seinen Schnellstart veröffentlicht.
   #
-  # ACHTUNG: Die Impala-Abbilder gibt es nur für amd64. In einem arm64-Arbeitsbereich
-  # laufen sie nicht.
-  - name: hive-metastore
-    container:
-      image: apache/impala:4.5.0-impala_quickstart_hms
-      memoryLimit: 1Gi
-      mountSources: true
-      volumeMounts:
-        - name: datenplattform-warehouse
-          path: /var/lib/hive
-      command: ["/bin/bash", "-c"]
-      args:
-        - >-
-          cp /projects/dev-starter/datenplattform/conf/hive-site.xml /opt/hive/conf/ &&
-          exec /hms-entrypoint.sh hms
-
+  # ACHTUNG: Das Impala-Abbild gibt es nur für amd64. In einem arm64-Arbeitsbereich
+  # läuft es nicht.
   - name: kudu-master
     container:
       image: apache/kudu:1.18-ubuntu
@@ -194,7 +183,7 @@ components:
         - name: KUDU_MASTERS
           value: localhost
         - name: MASTER_ARGS
-          value: --unlock_unsafe_flags
+          value: --unlock_unsafe_flags --default_num_replicas=1
       volumeMounts:
         - name: datenplattform-kudu
           path: /var/lib/kudu
@@ -211,50 +200,24 @@ components:
           value: --unlock_unsafe_flags
       args: ["tserver"]
 
-  - name: statestored
+  - name: impala
     container:
-      image: apache/impala:4.5.0-statestored
-      memoryLimit: 1Gi
-      args: ["-redirect_stdout_stderr=false", "-logtostderr", "-v=1"]
-
-  - name: catalogd
-    container:
-      image: apache/impala:4.5.0-catalogd
-      memoryLimit: 2Gi
-      mountSources: true
-      volumeMounts:
-        - name: datenplattform-warehouse
-          path: /var/lib/hive
-      command: ["/bin/bash", "-c"]
-      args:
-        - >-
-          cp /projects/dev-starter/datenplattform/conf/*.xml /opt/impala/conf/ &&
-          exec /opt/impala/bin/daemon_entrypoint.sh catalogd
-          -redirect_stdout_stderr=false -logtostderr -v=1
-          -hms_event_polling_interval_s=1
-
-  - name: impalad
-    container:
-      image: apache/impala:4.5.0-impalad_coord_exec
+      image: apache/kudu:impala-latest
       memoryLimit: 4Gi
-      mountSources: true
-      volumeMounts:
-        - name: datenplattform-warehouse
-          path: /var/lib/hive
+      env:
+        - name: KUDU_MASTERS
+          value: localhost:7051
       endpoints:
         - name: impala-jdbc
           targetPort: 21050
           exposure: internal
+        - name: impala-beeswax
+          targetPort: 21000
+          exposure: internal
         - name: impala-ui
           targetPort: 25000
           exposure: internal
-      command: ["/bin/bash", "-c"]
-      args:
-        - >-
-          cp /projects/dev-starter/datenplattform/conf/*.xml /opt/impala/conf/ &&
-          exec /opt/impala/bin/daemon_entrypoint.sh impalad
-          -redirect_stdout_stderr=false -logtostderr -v=1
-          -kudu_master_hosts=localhost:7051 -mem_limit=3gb
+      args: ["impala"]
 
   - name: m2
     volume:
@@ -265,9 +228,6 @@ components:
   - name: demo-db-data
     volume:
       size: 1Gi
-  - name: datenplattform-warehouse
-    volume:
-      size: 2Gi
   - name: datenplattform-kudu
     volume:
       size: 2Gi
@@ -283,12 +243,15 @@ commands:
       group:
         kind: build
         isDefault: true
-  - id: install-shared-ui
+  - id: install-frontends
     exec:
-      label: "2 · Abhängigkeiten von shared-ui installieren"
+      # Ein Aufruf für alle Frontends: der Arbeitsbereich verlinkt die Bibliothek aus dem
+      # Nachbar-Checkout und gibt allen Modulen dasselbe React — zwei Kopien von React auf
+      # einer Seite sind kein doppeltes Paket, sondern ein defekter Hook.
+      label: "2 · Frontends als npm-Arbeitsbereich installieren"
       component: tools
-      workingDir: ${PROJECTS_ROOT}/shared-ui
-      commandLine: npm install
+      workingDir: ${PROJECTS_ROOT}/dev-starter
+      commandLine: ./npm-workspace.sh
       group:
         kind: build
   - id: seed-datenplattform
@@ -298,8 +261,8 @@ commands:
       workingDir: ${PROJECTS_ROOT}/dev-starter
       # Impala hat keinen Startpunkt, der SQL beim ersten Hochfahren ausführt.
       commandLine: >-
-        until impala-shell -i localhost:21050 -q "select 1" > /dev/null 2>&1; do sleep 10; done &&
-        impala-shell -i localhost:21050 -f datenplattform/init/01-schema.sql
+        until impala-shell -i localhost:21000 -q "select 1" > /dev/null 2>&1; do sleep 10; done &&
+        impala-shell -i localhost:21000 -f datenplattform/init/01-schema.sql
       group:
         kind: build
   - id: prepare
@@ -307,7 +270,7 @@ commands:
       label: "Arbeitsbereich vorbereiten"
       commands:
         - install-shared-bff
-        - install-shared-ui
+        - install-frontends
       parallel: false
 
   - id: run-portal

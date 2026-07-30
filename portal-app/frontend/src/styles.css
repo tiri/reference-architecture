@@ -1,5 +1,7 @@
 @import "@platform/shared-ui/src/styles/globals.css";
 
-/* Tailwind must scan the shared lib's sources via the real path — the scanner does not
-   follow the node_modules symlink created by the file: dependency. */
-@source "../../../shared-ui/src";
+/* The package ships its source, so Tailwind scans the same files Vite compiles. The
+   workspace hoists it to the root node_modules, which is why the path leaves this
+   package — pointing inside frontend/node_modules finds nothing, and the classes that
+   only shared-ui uses then silently never reach the stylesheet. */
+@source "../../../node_modules/@platform/shared-ui/src";

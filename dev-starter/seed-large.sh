@@ -4,7 +4,7 @@
 # so every page the user turns is a query against it.
 #
 #   ./seed-large.sh            # 100_000 records
-#   ./seed-large.sh 500000     # as many as you like, up to 1_000_000
+#   ./seed-large.sh 80000000   # as many as you like, up to 100_000_000
 #
 # The module's own database is deliberately not filled here. It holds no records — only
 # the change queue and the audit trail, both of which grow from use rather than seeding.
@@ -36,7 +36,7 @@ WIDTH=$PLACES
 echo "==> Datenbasis: $ROWS records, ids padded to $WIDTH digits"
 # The digit table is Kudu because its rows must be deletable and updatable, like the
 # records themselves.
-docker compose run --rm -T impala-client <<SQL
+docker compose exec -T impala impala-shell -i localhost:21000 <<SQL
 create table if not exists datenplattform.digit (d int primary key)
   partition by hash (d) partitions 2 stored as kudu;
 -- UPSERT, not INSERT OVERWRITE: Kudu tables do not support the latter, and it fails

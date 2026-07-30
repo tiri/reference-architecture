@@ -7,7 +7,7 @@ import type {
     TooltipTriggerComponentProps as AriaTooltipTriggerComponentProps,
 } from "react-aria-components";
 import { Button as AriaButton, OverlayArrow as AriaOverlayArrow, Tooltip as AriaTooltip, TooltipTrigger as AriaTooltipTrigger } from "react-aria-components";
-import { cx } from "@platform/shared-ui/src/utils/cx";
+import { cx } from "../../../utils/cx";
 
 interface TooltipProps extends AriaTooltipTriggerComponentProps, Omit<AriaTooltipProps, "children"> {
     /**

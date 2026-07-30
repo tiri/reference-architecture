@@ -1,7 +1,7 @@
 import { Building05, ChevronSelectorVertical } from "@untitledui/icons";
 import { Button as AriaButton } from "react-aria-components";
-import { Dropdown } from "@platform/shared-ui/src/components/base/dropdown/dropdown";
-import { useAuth } from "@platform/shared-ui/src/auth/AuthProvider";
+import { Dropdown } from "../base/dropdown/dropdown";
+import { useAuth } from "../../auth/AuthProvider";
 
 /**
  * The tenant, as the first segment of the breadcrumb: everything on the page is read in

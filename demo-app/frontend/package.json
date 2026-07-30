@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@platform/shared-ui": "file:../../shared-ui",
+    "@platform/shared-ui": "^0.1.0",
     "@untitledui/icons": "^0.0.19",
     "react": "^19.2.8",
     "react-aria-components": "^1.19.0",

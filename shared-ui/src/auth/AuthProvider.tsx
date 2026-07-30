@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { apiFetch } from "@platform/shared-ui/src/api/apiFetch";
-import { ApiError } from "@platform/shared-ui/src/api/problem";
-import { login } from "@platform/shared-ui/src/auth/auth";
+import { apiFetch } from "../api/apiFetch";
+import { ApiError } from "../api/problem";
+import { login } from "./auth";
 
 export interface Tenant {
   id: string;

@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useState, type FC, type ReactNode } from "react";
 import { LayoutAlt01 } from "@untitledui/icons";
-import { SidebarNavigationSectionDividers } from "@platform/shared-ui/src/components/application/app-navigation/sidebar-navigation/sidebar-section-dividers";
-import type { NavItemType } from "@platform/shared-ui/src/components/application/app-navigation/config";
-import { Breadcrumbs } from "@platform/shared-ui/src/components/app-shell/Breadcrumbs";
-import { TenantSwitcher } from "@platform/shared-ui/src/components/app-shell/TenantSwitcher";
-import { UserMenu } from "@platform/shared-ui/src/components/app-shell/UserMenu";
-import { apiFetch } from "@platform/shared-ui/src/api/apiFetch";
+import { SidebarNavigationSectionDividers } from "../application/app-navigation/sidebar-navigation/sidebar-section-dividers";
+import type { NavItemType } from "../application/app-navigation/config";
+import { Breadcrumbs } from "./Breadcrumbs";
+import { TenantSwitcher } from "./TenantSwitcher";
+import { UserMenu } from "./UserMenu";
+import { apiFetch } from "../../api/apiFetch";
 
 export interface NavItem {
   /** The route this entry leads to — nav entries are links, so this is a path. */
@@ -91,10 +91,9 @@ export function AppShell({ appName, icon, nav, activeNavId, children }: AppShell
 
   return (
     <ModuleInfoContext.Provider value={info}>
-      {/* The sidebar keeps the viewport; the content scrolls. A page is as long as it has
-          content to show, and squeezing it into what is left over only moved the scrollbar
-          somewhere less expected — a table with its own inner scroll is a table whose
-          header row and pagination the reader can no longer reach in the usual way. */}
+      {/* Exactly one viewport, never more. What scrolls is the rows — inside the table,
+          under a header that stays put — so the page around them never moves: the reader
+          keeps the title, the conditions and the count in view while reading. */}
       <div className="flex h-dvh overflow-hidden flex-col bg-primary lg:flex-row">
         <SidebarNavigationSectionDividers
           brand={brand}
@@ -104,13 +103,11 @@ export function AppShell({ appName, icon, nav, activeNavId, children }: AppShell
           accountCard={<UserMenu />}
         />
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/* One row: where you are on the left, what you are looking at it through on the
               right. The trail is built here rather than by each page, because the shell
-              already knows the pages and which of them is showing.
-              Pinned, so that scrolling a long page never costs the reader the two things
-              that say what they are looking at and for whom. */}
-          <div className="sticky top-0 z-10 flex h-12 shrink-0 items-center justify-between gap-4 bg-primary px-4 md:px-8">
+              already knows the pages and which of them is showing. */}
+          <div className="flex h-12 shrink-0 items-center justify-between gap-4 px-4 md:px-8">
             <Breadcrumbs
               homeUrl={home === activeNavId ? undefined : home}
               current={nav.find((entry) => entry.id === activeNavId)?.label}
@@ -118,7 +115,7 @@ export function AppShell({ appName, icon, nav, activeNavId, children }: AppShell
             <TenantSwitcher />
           </div>
 
-          <main className="mx-auto w-full max-w-container px-4 pb-8 md:px-8">
+          <main className="mx-auto flex w-full min-h-0 max-w-container flex-1 flex-col px-4 pb-8 md:px-8">
             {children}
           </main>
 
