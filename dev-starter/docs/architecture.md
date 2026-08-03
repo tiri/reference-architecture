@@ -12,7 +12,6 @@ This page answers only two questions the documentation cannot: **where does each
 | Login, SSO, token check, batch | [6 Laufzeitsicht](../../arch-docs/README.md#6-laufzeitsicht) |
 | Session, tenant isolation, logging | [8 Querschnittliche Konzepte](../../arch-docs/README.md#8-querschnittliche-konzepte) |
 | Why is it built this way? | [9 Architekturentscheidungen](../../arch-docs/README.md#9-architekturentscheidungen) |
-| What goes wrong in practice? | [11 Risiken und Praxisfallen](../../arch-docs/README.md#11-risiken-und-praxisfallen) |
 | What does this term mean in the code? | [12 Glossar](../../arch-docs/README.md#12-glossar) |
 
 ## Concept → file
@@ -41,11 +40,11 @@ This page answers only two questions the documentation cannot: **where does each
 |---|---|---|
 | Kubernetes deployment, network separation, image hardening | not present | Operational concern of a different team ([8.6](../../arch-docs/README.md#8-querschnittliche-konzepte)); nothing to prove locally |
 | Datenbasis authorization | a local database with seed data, no policy engine | There is no real leading source to talk to here; the sandbox has no authorization to enforce |
-| Tenant binding to the database lives in `demo-app`, not `shared-bff` | module-level | `shared-bff` must stay usable by modules without a database — the portal has none. Moves to the library as soon as a second database module exists (technical debt, 11.7) |
+| Tenant binding to the database lives in `demo-app`, not `shared-bff` | module-level | Historical: `shared-bff` had to stay usable without a database, because the portal had none. E2 has since given every module one, so the reason is gone; it moves to the library as soon as a second module with business data exists |
 
 ## Two traps that are invisible in tests
 
-Both are in [chapter 11](../../arch-docs/README.md#11-risiken-und-praxisfallen); they are repeated here only because the fix is a property of *this* repository:
+Neither is obvious from the architecture document, and both are properties of *this* repository:
 
 - **The application must not be a database superuser.** A superuser bypasses row-level security unconditionally, so the second line of tenant isolation would be silently off while every test stays green. `dev-starter` therefore creates an unprivileged `demo_app` role — see [postgres/init/01-app-role.sql](../postgres/init/01-app-role.sql). `force row level security` is needed as well, or the policy would not apply to the table owner.
 - **The Datenbasis datasource is not JTA-enlisted** (`jdbc.transactions=disabled`). Sharing a transaction with the module's own database would need XA and — worse — a failure out there would roll back the queue, so the run would replay the same requests forever. Measured, not feared: enlisting it made the batch retry to its own guard.
